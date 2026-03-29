@@ -1,23 +1,21 @@
 package com.loyaltyService.wallet_service.service.impl;
 
 import com.loyaltyService.wallet_service.client.RewardClient;
-import com.loyaltyService.wallet_service.dto.WalletBalanceResponse;
 import com.loyaltyService.wallet_service.entity.LedgerEntry;
 import com.loyaltyService.wallet_service.entity.Transaction;
 import com.loyaltyService.wallet_service.entity.WalletAccount;
 import com.loyaltyService.wallet_service.exception.WalletException;
-import com.loyaltyService.wallet_service.mapper.WalletMapper;
 import com.loyaltyService.wallet_service.repository.TransactionRepository;
 import com.loyaltyService.wallet_service.repository.WalletAccountRepository;
 import com.loyaltyService.wallet_service.service.KafkaProducerService;
 import com.loyaltyService.wallet_service.service.LedgerService;
-import com.loyaltyService.wallet_service.service.WalletService;
+import com.loyaltyService.wallet_service.service.WalletCommandService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,24 +23,32 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-@Slf4j @Service @RequiredArgsConstructor
-public class WalletServiceImpl implements WalletService{
+/**
+ * CQRS — Command implementation for Wallet.
+ * Handles all state-changing operations and evicts the Redis cache on every
+ * write.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class WalletCommandServiceImpl implements WalletCommandService {
 
     private final WalletAccountRepository accountRepo;
     private final TransactionRepository txnRepo;
     private final LedgerService ledgerService;
     private final RewardClient rewardClient;
     private final KafkaProducerService kafkaProducer;
-    private final WalletMapper walletMapper;
 
-    @Value("${wallet.daily-topup-limit:50000}") private BigDecimal dailyTopupLimit;
-    @Value("${wallet.daily-transfer-limit:25000}") private BigDecimal dailyTransferLimit;
-    @Value("${wallet.max-daily-transfers:10}") private int maxDailyTransfers;
+    @Value("${wallet.daily-topup-limit:50000}")
+    private BigDecimal dailyTopupLimit;
+    @Value("${wallet.daily-transfer-limit:25000}")
+    private BigDecimal dailyTransferLimit;
+    @Value("${wallet.max-daily-transfers:10}")
+    private int maxDailyTransfers;
 
     // ── Create ────────────────────────────────────────────────────────────────
     @Override
@@ -54,18 +60,11 @@ public class WalletServiceImpl implements WalletService{
         log.info("Wallet created for userId={}", userId);
     }
 
-    // ── Balance ───────────────────────────────────────────────────────────────
-    @Override
-    public WalletBalanceResponse getBalance(Long userId) {
-        WalletAccount acc = findWallet(userId);
-        return walletMapper.toResponse(acc, userId);
-    }
-
     // ── Topup ─────────────────────────────────────────────────────────────────
-    @Transactional
     @Override
+    @Transactional
+    @CacheEvict(value = "wallet-balance", key = "#userId")
     public void topup(Long userId, BigDecimal amount, String idempotencyKey) {
-        // Idempotency check
         if (idempotencyKey != null) {
             Optional<Transaction> existing = txnRepo.findByIdempotencyKey(idempotencyKey);
             if (existing.isPresent()) {
@@ -74,60 +73,57 @@ public class WalletServiceImpl implements WalletService{
             }
         }
         WalletAccount acc = findActiveWallet(userId);
-        // Daily limit check
+
         LocalDateTime start = LocalDate.now().atStartOfDay();
-        LocalDateTime end   = LocalDate.now().atTime(23, 59, 59);
+        LocalDateTime end = LocalDate.now().atTime(23, 59, 59);
         BigDecimal todayTotal = txnRepo.sumTodayTopups(userId,
-                Transaction.TxnType.TOPUP,
-                Transaction.TxnStatus.SUCCESS,
-                start,
-                end);
+                Transaction.TxnType.TOPUP, Transaction.TxnStatus.SUCCESS, start, end);
         if (todayTotal.add(amount).compareTo(dailyTopupLimit) > 0)
             throw new WalletException("Daily top-up limit of ₹" + dailyTopupLimit + " exceeded");
 
         String ref = "TOPUP_" + UUID.randomUUID();
-
-        // LEDGER FIRST — then update balance
         ledgerService.record(userId, amount, LedgerEntry.EntryType.CREDIT, ref, "Wallet top-up");
-
         acc.credit(amount);
         accountRepo.save(acc);
-
         txnRepo.save(Transaction.builder()
-            .receiverId(userId).amount(amount)
-            .status(Transaction.TxnStatus.SUCCESS).type(Transaction.TxnType.TOPUP)
-            .referenceId(ref).idempotencyKey(idempotencyKey).build());
+                .receiverId(userId).amount(amount)
+                .status(Transaction.TxnStatus.SUCCESS).type(Transaction.TxnType.TOPUP)
+                .referenceId(ref).idempotencyKey(idempotencyKey).build());
 
-        // Fire-and-forget to rewards service (fallback handles failure gracefully)
-        rewardClient.earnPoints(userId, amount);
-        log.info("Topup success: userId={}, amount={}, ref={}", userId, amount, ref);
+        // Publish Kafka event for Saga — reward-service consumes TOPUP_SUCCESS to earn
+        // points
         kafkaProducer.send("wallet-events", Map.of(
                 "event", "TOPUP_SUCCESS",
                 "userId", userId,
                 "amount", amount,
                 "reference", ref,
-                "balance", acc.getBalance()   // ✅ ADD THIS
-        ));
+                "balance", acc.getBalance()));
+        log.info("Topup success: userId={}, amount={}, ref={}", userId, amount, ref);
     }
 
     // ── Transfer ──────────────────────────────────────────────────────────────
     @Override
     @Transactional
-    public void transfer(Long senderId, Long receiverId, BigDecimal amount, String idempotencyKey, String description) {
+    @Caching(evict = {
+            @CacheEvict(value = "wallet-balance", key = "#senderId"),
+            @CacheEvict(value = "wallet-balance", key = "#receiverId")
+    })
+    public void transfer(Long senderId, Long receiverId, BigDecimal amount,
+            String idempotencyKey, String description) {
         if (senderId.equals(receiverId))
             throw new WalletException("Cannot transfer to yourself");
         if (idempotencyKey != null && txnRepo.findByIdempotencyKey(idempotencyKey).isPresent()) {
             log.info("Duplicate transfer ignored: idempotencyKey={}", idempotencyKey);
             return;
         }
-        WalletAccount sender   = findActiveWallet(senderId);
+        WalletAccount sender = findActiveWallet(senderId);
         WalletAccount receiver = findWallet(receiverId);
 
         if (sender.getBalance().compareTo(amount) < 0)
             throw new WalletException("Insufficient balance");
 
         LocalDateTime start = LocalDate.now().atStartOfDay();
-        LocalDateTime end   = LocalDate.now().atTime(23, 59, 59);
+        LocalDateTime end = LocalDate.now().atTime(23, 59, 59);
         BigDecimal todayAmt = txnRepo.sumTodayTransfers(senderId,
                 Transaction.TxnType.TRANSFER, Transaction.TxnStatus.SUCCESS, start, end);
         if (todayAmt.add(amount).compareTo(dailyTransferLimit) > 0)
@@ -137,7 +133,7 @@ public class WalletServiceImpl implements WalletService{
             throw new WalletException("Maximum " + maxDailyTransfers + " transfers per day reached");
 
         String ref = "TXN_" + UUID.randomUUID();
-        ledgerService.record(senderId,   amount, LedgerEntry.EntryType.DEBIT,  ref, description);
+        ledgerService.record(senderId, amount, LedgerEntry.EntryType.DEBIT, ref, description);
         ledgerService.record(receiverId, amount, LedgerEntry.EntryType.CREDIT, ref, description);
         sender.debit(amount);
         receiver.credit(amount);
@@ -147,21 +143,24 @@ public class WalletServiceImpl implements WalletService{
                 .senderId(senderId).receiverId(receiverId).amount(amount)
                 .status(Transaction.TxnStatus.SUCCESS).type(Transaction.TxnType.TRANSFER)
                 .referenceId(ref).idempotencyKey(idempotencyKey).description(description).build());
-        rewardClient.earnPoints(senderId, amount);
-        log.info("Transfer success: from={}, to={}, amount={}, ref={}", senderId, receiverId, amount, ref);
+
+        // Publish saga event
         kafkaProducer.send("wallet-events", Map.of(
                 "event", "TRANSFER_SUCCESS",
                 "senderId", senderId,
                 "receiverId", receiverId,
                 "amount", amount,
                 "reference", ref,
-                "balance", sender.getBalance()
-        ));
+                "balance", sender.getBalance()));
+        // Earn points for sender
+        rewardClient.earnPoints(senderId, amount);
+        log.info("Transfer success: from={}, to={}, amount={}, ref={}", senderId, receiverId, amount, ref);
     }
 
     // ── Withdraw ──────────────────────────────────────────────────────────────
     @Override
     @Transactional
+    @CacheEvict(value = "wallet-balance", key = "#userId")
     public void withdraw(Long userId, BigDecimal amount) {
         WalletAccount acc = findActiveWallet(userId);
         if (acc.getBalance().compareTo(amount) < 0)
@@ -174,15 +173,14 @@ public class WalletServiceImpl implements WalletService{
                 .status(Transaction.TxnStatus.SUCCESS).type(Transaction.TxnType.WITHDRAW)
                 .referenceId(ref).build());
         log.info("Withdrawal success: userId={}, amount={}, ref={}", userId, amount, ref);
-
     }
 
-    // ── Internal credit (cashback from rewards) ───────────────────────────────
+    // ── Internal credit (cashback / points redemption) ────────────────────────
     @Override
     @Transactional
+    @CacheEvict(value = "wallet-balance", key = "#userId")
     public void creditInternal(Long userId, BigDecimal amount, String source) {
         WalletAccount acc = findWallet(userId);
-        // FIX: choose correct TxnType based on source so history is readable
         Transaction.TxnType txnType = "REDEEM".equalsIgnoreCase(source)
                 ? Transaction.TxnType.REDEEM
                 : Transaction.TxnType.CASHBACK;
@@ -201,9 +199,9 @@ public class WalletServiceImpl implements WalletService{
         log.info("Internal credit: userId={}, amount={}, type={}", userId, amount, txnType);
     }
 
-    // ── Status management ─────────────────────────────────────────────────────
     @Override
     @Transactional
+    @CacheEvict(value = "wallet-balance", key = "#userId")
     public void creditInternal(Long userId, BigDecimal amount) {
         creditInternal(userId, amount, "CASHBACK");
     }
@@ -211,21 +209,11 @@ public class WalletServiceImpl implements WalletService{
     // ── Status management ─────────────────────────────────────────────────────
     @Override
     @Transactional
+    @CacheEvict(value = "wallet-balance", key = "#userId")
     public void updateStatus(Long userId, WalletAccount.WalletStatus status) {
         findWallet(userId);
         accountRepo.updateStatus(userId, status);
         log.info("Wallet status updated: userId={}, status={}", userId, status);
-    }
-
-    // ── Queries ───────────────────────────────────────────────────────────────
-    @Override
-    public Page<Transaction> getTransactions(Long userId, Pageable pageable) {
-        return txnRepo.findBySenderIdOrReceiverIdOrderByCreatedAtDesc(userId, userId, pageable);
-    }
-
-    @Override
-    public List<Transaction> getStatement(Long userId, LocalDateTime from, LocalDateTime to) {
-        return txnRepo.findStatement(userId, from, to);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -237,7 +225,8 @@ public class WalletServiceImpl implements WalletService{
     private WalletAccount findActiveWallet(Long userId) {
         WalletAccount acc = findWallet(userId);
         if (!acc.isActive())
-            throw new WalletException("Wallet is " + acc.getStatus().name().toLowerCase() + ". Contact support.", HttpStatus.FORBIDDEN);
+            throw new WalletException("Wallet is " + acc.getStatus().name().toLowerCase() + ". Contact support.",
+                    HttpStatus.FORBIDDEN);
         return acc;
     }
 }

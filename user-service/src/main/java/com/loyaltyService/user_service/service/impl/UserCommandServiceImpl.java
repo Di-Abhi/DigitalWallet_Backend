@@ -8,66 +8,37 @@ import com.loyaltyService.user_service.exception.ResourceNotFoundException;
 import com.loyaltyService.user_service.mapper.UserMapper;
 import com.loyaltyService.user_service.repository.KycRepository;
 import com.loyaltyService.user_service.repository.UserRepository;
-import com.loyaltyService.user_service.service.UserService;
+import com.loyaltyService.user_service.service.UserCommandService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * CQRS — Command implementation.
+ * Handles all write (state-changing) operations for User.
+ * Evicts the Redis cache on every mutation so that the query-side
+ * always returns fresh data after a write.
+ */
+@Slf4j
 @Service
 @RequiredArgsConstructor
-public class UserServiceImpl implements UserService {
+public class UserCommandServiceImpl implements UserCommandService {
 
     private final UserRepository userRepo;
     private final KycRepository kycRepo;
     private final AuthServiceClient authServiceClient;
     private final UserMapper userMapper;
 
-    // ==================== READ ====================
-
-    @Override
-    public UserProfileResponse getProfile(Long userId) {
-        return buildUserProfile(userId);
-    }
-
-    @Override
-    public UserProfileResponse getUserProfile(Long userId) {
-        return buildUserProfile(userId);
-    }
-
-    // ==================== UPDATE ====================
-
-    @Override
-    @Transactional
-    public UserProfileResponse updateProfile(Long userId, UpdateUserRequest req) {
-
-        User user = findUser(userId);
-
-        // Partial update via mapper
-        userMapper.updateUserFromDto(req, user);
-
-        userRepo.save(user);
-
-        // Sync with Auth Service
-        authServiceClient.updateProfile(
-                new AuthServiceClient.UpdateProfileRequest(
-                        userId,
-                        req.getName(),
-                        req.getPhone()
-                )
-        );
-
-        return buildUserProfile(userId);
-    }
-
-    // ==================== CREATE ====================
-
     @Override
     @Transactional
     public void createUser(Long id, String name, String email, String phone, User.Role role) {
-
-        if (userRepo.existsById(id)) return;
-
+        if (userRepo.existsById(id)) {
+            log.info("User already exists: id={}", id);
+            return;
+        }
         User user = User.builder()
                 .id(id)
                 .name(name)
@@ -76,21 +47,34 @@ public class UserServiceImpl implements UserService {
                 .role(role)
                 .status(User.UserStatus.ACTIVE)
                 .build();
-
         userRepo.save(user);
+        log.info("User created: id={}", id);
     }
 
-    // ==================== PRIVATE HELPERS ====================
+    @Override
+    @Transactional
+    @CacheEvict(value = "user-profile", key = "#userId")
+    public UserProfileResponse updateProfile(Long userId, UpdateUserRequest req) {
+        User user = findUser(userId);
+        userMapper.updateUserFromDto(req, user);
+        userRepo.save(user);
+
+        // Sync with Auth Service
+        authServiceClient.updateProfile(
+                new AuthServiceClient.UpdateProfileRequest(userId, req.getName(), req.getPhone()));
+
+        log.info("Profile updated and cache evicted for userId={}", userId);
+        return buildUserProfile(userId);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private UserProfileResponse buildUserProfile(Long userId) {
-
         User user = findUser(userId);
-
         String kycStatus = kycRepo
                 .findFirstByUserIdOrderBySubmittedAtDesc(userId)
                 .map(k -> k.getStatus().name())
                 .orElse("NOT_SUBMITTED");
-
         return userMapper.toUserProfile(user, kycStatus);
     }
 
