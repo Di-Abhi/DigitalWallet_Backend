@@ -4,9 +4,9 @@ spring:
   application:
     name: user-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/user_db}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:abhishek}
+    url: ${USER_DB_URL:jdbc:postgresql://localhost:5432/user_db}
+    username: ${USER_DB_USERNAME:postgres}
+    password: ${USER_DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -39,7 +39,7 @@ eureka:
   instance:
     prefer-ip-address: true
 jwt:
-  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+  secret: ${JWT_SECRET:change-me-to-a-long-random-secret}
 kyc:
   upload-dir: ${KYC_UPLOAD_DIR:uploads/kyc}
 springdoc:
@@ -74,6 +74,6 @@ feign:
 
 
 cloudinary:
-  cloud-name: dkbtavmkt
-  api-key: 184149712976294
-  api-secret: ySCj0V_8HSr68tNjKwCzFY_bUkw
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+  api-key: ${CLOUDINARY_API_KEY:}
+  api-secret: ${CLOUDINARY_API_SECRET:}
