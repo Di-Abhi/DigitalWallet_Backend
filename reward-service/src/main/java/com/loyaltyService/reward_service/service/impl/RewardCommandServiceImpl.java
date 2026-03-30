@@ -16,6 +16,7 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -39,6 +40,7 @@ public class RewardCommandServiceImpl implements RewardCommandService {
     private final RedemptionRepository redemptionRepo;
     private final WalletClient walletClient;
     private final KafkaProducerService kafkaProducer;
+    ObjectMapper mapper = new ObjectMapper();
 
     @Value("${rewards.points-per-rupee:100}")
     private int pointsPerRupee;
@@ -60,6 +62,7 @@ public class RewardCommandServiceImpl implements RewardCommandService {
     public void earnPoints(Long userId, BigDecimal amount) {
         RewardAccount acc = rewardRepo.findByUserId(userId)
                 .orElseGet(() -> rewardRepo.save(RewardAccount.builder().userId(userId).build()));
+        initializeDefaults(acc);
 
         int earned = amount.intValue() / pointsPerRupee;
         if (earned > 0) {
@@ -88,11 +91,13 @@ public class RewardCommandServiceImpl implements RewardCommandService {
         log.info("Points earned: userId={}, earned={}, total={}", userId, earned, acc.getPoints());
 
         // Publish Saga event for downstream listeners
-        kafkaProducer.send("reward-events", Map.of(
-                "event", "POINTS_EARNED",
-                "userId", userId,
-                "amount", earned,
-                "balance", acc.getPoints()));
+        kafkaProducer.send("reward-events",
+                mapper.writeValueAsString(Map.of(
+                        "event", "POINTS_EARNED",
+                        "userId", userId,
+                        "amount", earned,
+                        "balance", acc.getPoints()
+                )));
     }
 
     // ── ADD CATALOG ITEM ──────────────────────────────────────────────────────
@@ -175,6 +180,7 @@ public class RewardCommandServiceImpl implements RewardCommandService {
     @CacheEvict(value = "reward-summary", key = "#userId")
     public Redemption redeemReward(Long userId, Long rewardId) {
         RewardAccount acc = findAccount(userId);
+        initializeDefaults(acc);
         RewardItem item = itemRepo.findById(rewardId)
                 .orElseThrow(() -> new RewardException("Reward item not found", HttpStatus.NOT_FOUND));
 
@@ -260,8 +266,10 @@ public class RewardCommandServiceImpl implements RewardCommandService {
     }
 
     private RewardAccount findAccount(Long userId) {
-        return rewardRepo.findByUserId(userId)
+        RewardAccount account = rewardRepo.findByUserId(userId)
                 .orElseThrow(() -> new RewardException("Reward account not found", HttpStatus.NOT_FOUND));
+        initializeDefaults(account);
+        return account;
     }
 
     private boolean isTierEligible(RewardAccount.Tier userTier, String required) {
@@ -275,5 +283,17 @@ public class RewardCommandServiceImpl implements RewardCommandService {
         LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59);
         return txnRepo.sumRedeemedPointsToday(userId,
                 RewardTransaction.TxnType.REDEEM, startOfDay, endOfDay);
+    }
+
+    private void initializeDefaults(RewardAccount acc) {
+        if (acc.getPoints() == null) {
+            acc.setPoints(0);
+        }
+        if (acc.getTier() == null) {
+            acc.setTier(RewardAccount.Tier.SILVER);
+        }
+        if (acc.getFirstTopupDone() == null) {
+            acc.setFirstTopupDone(false);
+        }
     }
 }

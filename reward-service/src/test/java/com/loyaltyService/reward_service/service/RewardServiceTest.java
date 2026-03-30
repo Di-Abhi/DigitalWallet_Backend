@@ -104,6 +104,24 @@ class RewardServiceTest {
     }
 
     @Test
+    void earnPointsInitializesLegacyNullFieldsBeforeApplyingRewards() {
+        RewardAccount legacyAccount = RewardAccount.builder()
+                .userId(1L)
+                .points(null)
+                .tier(null)
+                .firstTopupDone(null)
+                .build();
+        when(rewardRepo.findByUserId(1L)).thenReturn(Optional.of(legacyAccount));
+
+        rewardCommandService.earnPoints(1L, new BigDecimal("500"));
+
+        assertEquals(105, legacyAccount.getPoints());
+        assertEquals(RewardAccount.Tier.SILVER, legacyAccount.getTier());
+        assertEquals(Boolean.TRUE, legacyAccount.getFirstTopupDone());
+        verify(txnRepo, times(2)).save(any(RewardTransaction.class));
+    }
+
+    @Test
     void addCatalogItemSavesMappedItem() {
         RewardItemRequest request = new RewardItemRequest(
                 "Coupon",
