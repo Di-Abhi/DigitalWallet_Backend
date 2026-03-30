@@ -74,6 +74,6 @@ feign:
 
 
 cloudinary:
-  cloud-name: DigitalWallet
+  cloud-name: dkbtavmkt
   api-key: 184149712976294
   api-secret: ySCj0V_8HSr68tNjKwCzFY_bUkw

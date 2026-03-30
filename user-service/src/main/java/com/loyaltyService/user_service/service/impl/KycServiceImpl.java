@@ -11,6 +11,7 @@ import com.loyaltyService.user_service.mapper.KycMapper;
 import com.loyaltyService.user_service.repository.AuditLogRepository;
 import com.loyaltyService.user_service.repository.KycRepository;
 import com.loyaltyService.user_service.repository.UserRepository;
+import com.loyaltyService.user_service.service.CloudinaryService;
 import com.loyaltyService.user_service.service.KafkaProducerService;
 import com.loyaltyService.user_service.service.KycService;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class KycServiceImpl implements KycService {
     private final WalletServiceClient walletServiceClient;
     private final KafkaProducerService kafkaProducer;
     private final KycMapper kycMapper;
+    private final CloudinaryService cloudinaryService;
 
 
     @Value("${kyc.upload-dir:uploads/kyc}")
@@ -54,19 +56,29 @@ public class KycServiceImpl implements KycService {
             if (kycRepo.existsByUserIdAndStatus(userId, KycDetail.KycStatus.APPROVED))
                 throw new DuplicateKycException("KYC already approved for this user");
 
+//            String filePath = null;
+//            if (docFile != null && !docFile.isEmpty()) {
+//                try {
+//                    Path dir = Paths.get(uploadDir, userId.toString());
+//                    Files.createDirectories(dir);
+//                    String fname = docType.name() + "_" + System.currentTimeMillis()
+//                            + "_" + docFile.getOriginalFilename();
+//                    filePath = dir.resolve(fname).toString();
+//                    Files.copy(docFile.getInputStream(), Paths.get(filePath),
+//                            StandardCopyOption.REPLACE_EXISTING);
+//                } catch (IOException e) {
+//                    throw new RuntimeException("Failed to store KYC document", e);
+//                }
+//            }
+
             String filePath = null;
+
             if (docFile != null && !docFile.isEmpty()) {
-                try {
-                    Path dir = Paths.get(uploadDir, userId.toString());
-                    Files.createDirectories(dir);
-                    String fname = docType.name() + "_" + System.currentTimeMillis()
-                            + "_" + docFile.getOriginalFilename();
-                    filePath = dir.resolve(fname).toString();
-                    Files.copy(docFile.getInputStream(), Paths.get(filePath),
-                            StandardCopyOption.REPLACE_EXISTING);
-                } catch (IOException e) {
-                    throw new RuntimeException("Failed to store KYC document", e);
-                }
+                filePath = cloudinaryService.uploadFile(
+                        docFile,
+                        userId,
+                        docType.name()
+                );
             }
 
             KycDetail kyc = KycDetail.builder()
