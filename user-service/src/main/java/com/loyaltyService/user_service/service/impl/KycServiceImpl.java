@@ -42,44 +42,44 @@ public class KycServiceImpl implements KycService {
 
 
     @Value("${kyc.upload-dir:uploads/kyc}")
-    private String uploadDir;
+        private String uploadDir;
 
-    // ── SUBMIT ───────────────────────────────────────────────────────────────
-    @Override
-    @Transactional
-    public KycStatusResponse submitKyc(Long userId, KycDetail.DocType docType,
-                                       String docNumber, MultipartFile docFile) {
-        User user = findUser(userId);
+        // ── SUBMIT ───────────────────────────────────────────────────────────────
+        @Override
+        @Transactional
+        public KycStatusResponse submitKyc(Long userId, KycDetail.DocType docType,
+                String docNumber, MultipartFile docFile) {
+            User user = findUser(userId);
 
-        if (kycRepo.existsByUserIdAndStatus(userId, KycDetail.KycStatus.APPROVED))
-            throw new DuplicateKycException("KYC already approved for this user");
+            if (kycRepo.existsByUserIdAndStatus(userId, KycDetail.KycStatus.APPROVED))
+                throw new DuplicateKycException("KYC already approved for this user");
 
-        String filePath = null;
-        if (docFile != null && !docFile.isEmpty()) {
-            try {
-                Path dir = Paths.get(uploadDir, userId.toString());
-                Files.createDirectories(dir);
-                String fname = docType.name() + "_" + System.currentTimeMillis()
-                        + "_" + docFile.getOriginalFilename();
-                filePath = dir.resolve(fname).toString();
-                Files.copy(docFile.getInputStream(), Paths.get(filePath),
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to store KYC document", e);
+            String filePath = null;
+            if (docFile != null && !docFile.isEmpty()) {
+                try {
+                    Path dir = Paths.get(uploadDir, userId.toString());
+                    Files.createDirectories(dir);
+                    String fname = docType.name() + "_" + System.currentTimeMillis()
+                            + "_" + docFile.getOriginalFilename();
+                    filePath = dir.resolve(fname).toString();
+                    Files.copy(docFile.getInputStream(), Paths.get(filePath),
+                            StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to store KYC document", e);
+                }
             }
-        }
 
-        KycDetail kyc = KycDetail.builder()
-                .user(user).docType(docType)
-                .docNumber(docNumber).docFilePath(filePath)
-                .status(KycDetail.KycStatus.PENDING)
-                .build();
+            KycDetail kyc = KycDetail.builder()
+                    .user(user).docType(docType)
+                    .docNumber(docNumber).docFilePath(filePath)
+                    .status(KycDetail.KycStatus.PENDING)
+                    .build();
 
-        KycDetail saved = kycRepo.save(kyc);
+            KycDetail saved = kycRepo.save(kyc);
 
-        auditRepo.save(AuditLog.builder()
-                .userId(userId).action("KYC_SUBMITTED")
-                .entityType("KycDetail").entityId(saved.getId().toString())
+            auditRepo.save(AuditLog.builder()
+                    .userId(userId).action("KYC_SUBMITTED")
+                    .entityType("KycDetail").entityId(saved.getId().toString())
                 .performedBy(user.getEmail())
                 .details("DocType: " + docType + ", DocNumber: " + docNumber)
                 .build());

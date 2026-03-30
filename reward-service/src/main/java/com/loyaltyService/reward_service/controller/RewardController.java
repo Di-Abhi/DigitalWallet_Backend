@@ -74,16 +74,16 @@ public class RewardController {
                 "Successfully redeemed " + points + " points. ₹" + points + " credited to your wallet."));
     }
 
-    // ── Convert points → cash (backward compat) ───────────────────────────────
-    @PostMapping("/convert-to-cash")
-    @Operation(summary = "Convert points to wallet cash — alias for /redeem-points")
-    public ResponseEntity<ApiResponse<Void>> convertToCash(
-            @RequestHeader("X-User-Id") Long userId,
-            @RequestParam @Min(value = 1, message = "Points must be at least 1") Integer points) {
-        rewardCommandService.convertPointsToCash(userId, points);
-        return ResponseEntity.ok(ApiResponse.ok(
-                "Points converted successfully. ₹" + points + " credited to wallet."));
-    }
+//    // ── Convert points → cash (backward compat) ───────────────────────────────
+//    @PostMapping("/convert-to-cash")
+//    @Operation(summary = "Convert points to wallet cash — alias for /redeem-points")
+//    public ResponseEntity<ApiResponse<Void>> convertToCash(
+//            @RequestHeader("X-User-Id") Long userId,
+//            @RequestParam @Min(value = 1, message = "Points must be at least 1") Integer points) {
+//        rewardCommandService.convertPointsToCash(userId, points);
+//        return ResponseEntity.ok(ApiResponse.ok(
+//                "Points converted successfully. ₹" + points + " credited to wallet."));
+//    }
 
     // ── Transaction history ───────────────────────────────────────────────────
     @GetMapping("/transactions")

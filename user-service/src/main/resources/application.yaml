@@ -71,3 +71,9 @@ feign:
       default:
         connectTimeout: 5000
         readTimeout: 5000
+
+
+cloudinary:
+  cloud-name: DigitalWallet
+  api-key: 184149712976294
+  api-secret: ySCj0V_8HSr68tNjKwCzFY_bUkw
