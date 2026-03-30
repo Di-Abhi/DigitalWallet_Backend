@@ -11,4 +11,6 @@ public interface UserQueryService {
     UserProfileResponse getProfile(Long userId);
 
     UserProfileResponse getUserProfile(Long userId);
+
+    String getUserStatus(Long userId);
 }

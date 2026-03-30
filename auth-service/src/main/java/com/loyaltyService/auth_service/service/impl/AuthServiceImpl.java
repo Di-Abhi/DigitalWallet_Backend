@@ -3,6 +3,7 @@ package com.loyaltyService.auth_service.service.impl;
 import com.loyaltyService.auth_service.client.UserServiceClient;
 import com.loyaltyService.auth_service.dto.AuthDto;
 import com.loyaltyService.auth_service.exception.AuthException;
+import com.loyaltyService.auth_service.exception.UserBlockedException;
 import com.loyaltyService.auth_service.model.OtpStore;
 import com.loyaltyService.auth_service.model.RefreshToken;
 import com.loyaltyService.auth_service.model.User;
@@ -92,8 +93,15 @@ public class AuthServiceImpl implements AuthService {
                         request.getPassword()
                 )
         );
+
         User user = userRepository.findByEmail(request.getEmail().toLowerCase())
                 .orElseThrow(() -> new AuthException("User not found", HttpStatus.NOT_FOUND));
+
+        String status = userServiceClient.getUserStatus(user.getId());
+
+        if ("BLOCKED".equalsIgnoreCase(status)) {
+            throw new UserBlockedException();
+        }
 
         return buildAuthResponse(user);
     }
@@ -112,6 +120,11 @@ public class AuthServiceImpl implements AuthService {
                         request.getPassword()
                 )
         );
+
+        String status = userServiceClient.getUserStatus(user.getId());
+        if ("BLOCKED".equalsIgnoreCase(status)) {
+            throw new UserBlockedException();
+        }
 
         // Step 3: Return JWT response
         return buildAuthResponse(user);
@@ -144,6 +157,11 @@ public class AuthServiceImpl implements AuthService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new AuthException("User not found", HttpStatus.NOT_FOUND));
+
+        String status = userServiceClient.getUserStatus(user.getId());
+        if ("BLOCKED".equalsIgnoreCase(status)) {
+            throw new UserBlockedException();
+        }
 
         return buildAuthResponse(user);
     }

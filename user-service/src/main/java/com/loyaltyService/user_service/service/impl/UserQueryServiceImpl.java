@@ -40,6 +40,17 @@ public class UserQueryServiceImpl implements UserQueryService {
         return buildUserProfile(userId);
     }
 
+    @Override
+    @Cacheable(value = "user-status", key = "#userId")
+    public String getUserStatus(Long userId) {
+        log.debug("Cache miss — loading user status from DB for userId={}", userId);
+
+        User user = findUser(userId);
+        return user.getStatus() != null
+                ? user.getStatus().name()
+                : "ACTIVE";
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private UserProfileResponse buildUserProfile(Long userId) {

@@ -58,4 +58,9 @@ public class UserController {
 
     record CreateUserRequest(Long id, String name, String email, String phone, User.Role role) {
     }
+
+    @GetMapping("/internal/{userId}/status")
+    public String getUserStatus(@PathVariable Long userId) {
+        return userQueryService.getUserStatus(userId);
+    }
 }
