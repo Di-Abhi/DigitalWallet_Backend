@@ -133,7 +133,8 @@ public class RewardCommandServiceImpl implements RewardCommandService {
         if (acc.getPoints() < points)
             throw new RewardException("Insufficient points. Available: " + acc.getPoints());
 
-        BigDecimal cashAmount = BigDecimal.valueOf(points / 100);
+        BigDecimal cashAmount = BigDecimal.valueOf(points)
+                .divide(BigDecimal.valueOf(100));
         acc.setPoints(acc.getPoints() - points);
         updateTier(acc);
         rewardRepo.save(acc);
@@ -158,11 +159,11 @@ public class RewardCommandServiceImpl implements RewardCommandService {
                 .description("Redeemed " + points + " points → ₹" + cashAmount + " credited to wallet")
                 .build());
 
-        kafkaProducer.send("reward-events", Map.of(
+        kafkaProducer.send("reward-events", mapper.writeValueAsString(Map.of(
                 "event", "POINTS_REDEEMED",
                 "userId", userId,
                 "points", points,
-                "cash", cashAmount));
+                "cash", cashAmount)));
         log.info("Points redeemed: userId={}, points={}, cash=₹{}", userId, points, cashAmount);
     }
 
