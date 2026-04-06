@@ -14,4 +14,5 @@ public interface AuthService {
             AuthDto.ForgotPasswordVerifyRequest request);
 	AuthDto.SuccessResponse resetPassword(AuthDto.ResetPasswordRequest request);
 	AuthDto.AuthResponse refreshToken(AuthDto.RefreshTokenRequest request);
+	void updateStatus(Long userId, String status);
 }

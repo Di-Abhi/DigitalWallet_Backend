@@ -7,16 +7,15 @@ import com.loyaltyService.user_service.mapper.UserMapper;
 import com.loyaltyService.user_service.repository.KycRepository;
 import com.loyaltyService.user_service.repository.UserRepository;
 import com.loyaltyService.user_service.service.UserQueryService;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 /**
- * CQRS — Query implementation.
- * Handles all read operations for User.
- * Results are cached in Redis under "user-profile::{userId}" for 15 minutes.
+ * CQRS query implementation.
+ * Profile reads are cached; status reads are left uncached so auth checks see the
+ * latest admin block/unblock changes immediately.
  */
 @Slf4j
 @Service
@@ -30,7 +29,7 @@ public class UserQueryServiceImpl implements UserQueryService {
     @Override
     @Cacheable(value = "user-profile", key = "#userId")
     public UserProfileResponse getProfile(Long userId) {
-        log.debug("Cache miss — loading user profile from DB for userId={}", userId);
+        log.debug("Cache miss - loading user profile from DB for userId={}", userId);
         return buildUserProfile(userId);
     }
 
@@ -41,22 +40,22 @@ public class UserQueryServiceImpl implements UserQueryService {
     }
 
     @Override
-    @Cacheable(value = "user-status", key = "#userId")
-    public String getUserStatus(Long userId) {
-        log.debug("Cache miss — loading user status from DB for userId={}", userId);
-
-        User user = findUser(userId);
-        return user.getStatus() != null
-                ? user.getStatus().name()
-                : "ACTIVE";
+    public UserProfileResponse getUserProfileByPhone(String phone) {
+        User user = userRepo.findByPhone(phone)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found for phone: " + phone));
+        return buildUserProfile(user.getId());
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    @Override
+    public String getUserStatus(Long userId) {
+        log.debug("Loading user status from DB for userId={}", userId);
+        User user = findUser(userId);
+        return user.getStatus() != null ? user.getStatus().name() : "ACTIVE";
+    }
 
     private UserProfileResponse buildUserProfile(Long userId) {
         User user = findUser(userId);
-        String kycStatus = kycRepo
-                .findFirstByUserIdOrderBySubmittedAtDesc(userId)
+        String kycStatus = kycRepo.findFirstByUserIdOrderBySubmittedAtDesc(userId)
                 .map(k -> k.getStatus().name())
                 .orElse("NOT_SUBMITTED");
         return userMapper.toUserProfile(user, kycStatus);

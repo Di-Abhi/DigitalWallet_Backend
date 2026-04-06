@@ -1,6 +1,7 @@
 package com.loyaltyService.wallet_service.service.impl;
 
 import com.loyaltyService.wallet_service.client.RewardClient;
+import com.loyaltyService.wallet_service.client.UserClient;
 import com.loyaltyService.wallet_service.entity.LedgerEntry;
 import com.loyaltyService.wallet_service.entity.Transaction;
 import com.loyaltyService.wallet_service.entity.WalletAccount;
@@ -13,9 +14,11 @@ import com.loyaltyService.wallet_service.service.WalletCommandService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import feign.FeignException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +44,9 @@ public class WalletCommandServiceImpl implements WalletCommandService {
     private final TransactionRepository txnRepo;
     private final LedgerService ledgerService;
     private final RewardClient rewardClient;
+    private final UserClient userClient;
     private final KafkaProducerService kafkaProducer;
+    private final CacheManager cacheManager;
 
     @Value("${wallet.daily-topup-limit:50000}")
     private BigDecimal dailyTopupLimit;
@@ -104,16 +109,15 @@ public class WalletCommandServiceImpl implements WalletCommandService {
     // ── Transfer ──────────────────────────────────────────────────────────────
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "wallet-balance", key = "#senderId"),
-            @CacheEvict(value = "wallet-balance", key = "#receiverId")
-    })
-    public void transfer(Long senderId, Long receiverId, BigDecimal amount,
+    @CacheEvict(value = "wallet-balance", key = "#senderId")
+    public void transfer(Long senderId, String receiverPhone, BigDecimal amount,
             String idempotencyKey, String description) {
+        Long receiverId = resolveReceiverId(receiverPhone);
         if (senderId.equals(receiverId))
             throw new WalletException("Cannot transfer to yourself");
         if (idempotencyKey != null && txnRepo.findByIdempotencyKey(idempotencyKey).isPresent()) {
             log.info("Duplicate transfer ignored: idempotencyKey={}", idempotencyKey);
+            evictReceiverBalance(receiverId);
             return;
         }
         WalletAccount sender = findActiveWallet(senderId);
@@ -151,9 +155,11 @@ public class WalletCommandServiceImpl implements WalletCommandService {
                 "receiverId", receiverId,
                 "amount", amount,
                 "reference", ref,
-                "balance", sender.getBalance()));
+                "senderBalance", sender.getBalance(),
+                "receiverBalance", receiver.getBalance()));
         // Earn points for sender
         rewardClient.earnPoints(senderId, amount);
+        evictReceiverBalance(receiverId);
         log.info("Transfer success: from={}, to={}, amount={}, ref={}", senderId, receiverId, amount, ref);
     }
 
@@ -228,5 +234,28 @@ public class WalletCommandServiceImpl implements WalletCommandService {
             throw new WalletException("Wallet is " + acc.getStatus().name().toLowerCase() + ". Contact support.",
                     HttpStatus.FORBIDDEN);
         return acc;
+    }
+
+    private Long resolveReceiverId(String receiverPhone) {
+        try {
+            UserClient.UserProfileResponse user = userClient.getUserByPhone(receiverPhone);
+            if (user == null || user.id() == null) {
+                throw new WalletException("User not found for phone: " + receiverPhone, HttpStatus.NOT_FOUND);
+            }
+            return user.id();
+        } catch (FeignException.NotFound ex) {
+            throw new WalletException("User not found for phone: " + receiverPhone, HttpStatus.NOT_FOUND);
+        } catch (WalletException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new WalletException("Unable to resolve recipient phone number", HttpStatus.BAD_GATEWAY);
+        }
+    }
+
+    private void evictReceiverBalance(Long receiverId) {
+        Cache cache = cacheManager.getCache("wallet-balance");
+        if (cache != null) {
+            cache.evict(receiverId);
+        }
     }
 }

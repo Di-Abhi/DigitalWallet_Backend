@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,6 +56,29 @@ class NotificationConsumerTest {
                 "senderId", 10,
                 "receiverId", 20,
                 "amount", "250.00",
+                "senderBalance", "900.00",
+                "receiverBalance", "400.00",
+                "reference", "TXN-123"
+        ));
+        when(userClient.getProfile(10L)).thenReturn(UserDTO.builder().email("sender@example.com").build());
+        when(userClient.getProfile(20L)).thenReturn(UserDTO.builder().email("receiver@example.com").build());
+
+        notificationConsumer.walletEvents("event");
+
+        ArgumentCaptor<String> htmlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(emailService).sendHtml(eq("sender@example.com"), eq("Transfer Successful"), htmlCaptor.capture());
+        verify(emailService).sendHtml(eq("receiver@example.com"), eq("Money Received"), htmlCaptor.capture());
+        assertTrue(htmlCaptor.getAllValues().get(0).contains("₹900.00"));
+        assertTrue(htmlCaptor.getAllValues().get(1).contains("₹400.00"));
+    }
+
+    @Test
+    void transferEventFallsBackToLegacyBalanceWhenSeparateBalancesAreMissing() throws Exception {
+        when(objectMapper.readValue("event", Map.class)).thenReturn(Map.of(
+                "event", "TRANSFER_SUCCESS",
+                "senderId", 10,
+                "receiverId", 20,
+                "amount", "250.00",
                 "balance", "900.00",
                 "reference", "TXN-123"
         ));
@@ -63,8 +87,7 @@ class NotificationConsumerTest {
 
         notificationConsumer.walletEvents("event");
 
-        verify(emailService).sendHtml(eq("sender@example.com"), eq("Transfer Successful"), anyString());
-        verify(emailService).sendHtml(eq("receiver@example.com"), eq("Money Received"), anyString());
+        verify(emailService, times(2)).sendHtml(anyString(), anyString(), anyString());
     }
 
     @Test

@@ -187,6 +187,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.SerializationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -250,13 +251,13 @@ public class OtpServiceImpl implements OtpService {
         String otpKey = buildOtpKey(email, type);
         String attemptsKey = buildAttemptsKey(email, type);
 
-        String storedOtp = (String) redisTemplate.opsForValue().get(otpKey);
+        String storedOtp = readStringValue(otpKey);
 
         if (storedOtp == null) {
             throw new AuthException("OTP expired or not found", HttpStatus.GONE);
         }
 
-        Integer attempts = (Integer) redisTemplate.opsForValue().get(attemptsKey);
+        Integer attempts = readIntegerValue(attemptsKey);
 
         if (attempts != null && attempts >= maxAttempts) {
             redisTemplate.delete(otpKey);
@@ -317,6 +318,38 @@ public class OtpServiceImpl implements OtpService {
 
     private String buildAttemptsKey(String email, OtpStore.OtpType type) {
         return "otp:attempts:" + type + ":" + email;
+    }
+
+    private String readStringValue(String key) {
+        try {
+            Object value = redisTemplate.opsForValue().get(key);
+            return value != null ? String.valueOf(value) : null;
+        } catch (SerializationException ex) {
+            log.warn("Deleting unreadable Redis key {}", key, ex);
+            redisTemplate.delete(key);
+            return null;
+        }
+    }
+
+    private Integer readIntegerValue(String key) {
+        try {
+            Object value = redisTemplate.opsForValue().get(key);
+            if (value == null) {
+                return null;
+            }
+            if (value instanceof Number number) {
+                return number.intValue();
+            }
+            return Integer.valueOf(String.valueOf(value));
+        } catch (SerializationException ex) {
+            log.warn("Deleting unreadable Redis key {}", key, ex);
+            redisTemplate.delete(key);
+            return null;
+        } catch (NumberFormatException ex) {
+            log.warn("Deleting non-numeric Redis key {}", key, ex);
+            redisTemplate.delete(key);
+            return null;
+        }
     }
 
     @Override

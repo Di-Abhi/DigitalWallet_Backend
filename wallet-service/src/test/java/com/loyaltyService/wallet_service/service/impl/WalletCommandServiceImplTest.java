@@ -1,6 +1,7 @@
 package com.loyaltyService.wallet_service.service.impl;
 
 import com.loyaltyService.wallet_service.client.RewardClient;
+import com.loyaltyService.wallet_service.client.UserClient;
 import com.loyaltyService.wallet_service.entity.Transaction;
 import com.loyaltyService.wallet_service.entity.WalletAccount;
 import com.loyaltyService.wallet_service.exception.WalletException;
@@ -11,6 +12,8 @@ import com.loyaltyService.wallet_service.service.LedgerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -35,7 +38,13 @@ class WalletCommandServiceImplTest {
     @Mock
     private RewardClient rewardClient;
     @Mock
+    private UserClient userClient;
+    @Mock
     private KafkaProducerService kafkaProducer;
+    @Mock
+    private CacheManager cacheManager;
+    @Mock
+    private Cache walletBalanceCache;
     @InjectMocks
     private WalletCommandServiceImpl walletCommandService;
 
@@ -53,6 +62,7 @@ class WalletCommandServiceImplTest {
         ReflectionTestUtils.setField(walletCommandService, "dailyTopupLimit", new BigDecimal("50000"));
         ReflectionTestUtils.setField(walletCommandService, "dailyTransferLimit", new BigDecimal("25000"));
         ReflectionTestUtils.setField(walletCommandService, "maxDailyTransfers", 10);
+        when(cacheManager.getCache("wallet-balance")).thenReturn(walletBalanceCache);
     }
 
     @Test

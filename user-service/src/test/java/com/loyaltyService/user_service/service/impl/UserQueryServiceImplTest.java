@@ -100,4 +100,15 @@ class UserQueryServiceImplTest {
         
         assertNotNull(res);
     }
+
+    @Test
+    void testGetUserStatus_ReturnsLiveStatus() {
+        testUser.setStatus(User.UserStatus.BLOCKED);
+        when(userRepo.findById(1L)).thenReturn(Optional.of(testUser));
+
+        String status = userQueryService.getUserStatus(1L);
+
+        assertEquals("BLOCKED", status);
+        verify(userRepo).findById(1L);
+    }
 }

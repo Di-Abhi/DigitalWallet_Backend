@@ -10,8 +10,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "User", description = "User profile management")
 @SecurityRequirement(name = "bearerAuth")
 public class UserController {
@@ -54,6 +57,14 @@ public class UserController {
     @GetMapping("/internal/users/{id}")
     public UserProfileResponse getUserInternal(@PathVariable Long id) {
         return userQueryService.getUserProfile(id);
+    }
+
+    @GetMapping("/internal/phone/{phone}")
+    public UserProfileResponse getUserByPhoneInternal(
+            @PathVariable
+            @Pattern(regexp = "^\\d{10}$", message = "Phone number must be exactly 10 digits")
+            String phone) {
+        return userQueryService.getUserProfileByPhone(phone);
     }
 
     record CreateUserRequest(Long id, String name, String email, String phone, User.Role role) {

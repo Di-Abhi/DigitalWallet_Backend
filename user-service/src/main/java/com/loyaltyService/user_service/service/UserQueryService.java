@@ -12,5 +12,7 @@ public interface UserQueryService {
 
     UserProfileResponse getUserProfile(Long userId);
 
+    UserProfileResponse getUserProfileByPhone(String phone);
+
     String getUserStatus(Long userId);
 }

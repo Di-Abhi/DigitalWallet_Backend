@@ -42,7 +42,7 @@ public class AuthServiceImpl implements AuthService {
     private final OtpService otpService;
     private final AuthenticationManager authenticationManager;
     private final Map<String, String> passwordResetTokens = new ConcurrentHashMap<>();
-    
+
     @Override
     @Transactional
     public AuthDto.UserProfile signup(AuthDto.SignupRequest request) {
@@ -96,10 +96,7 @@ public class AuthServiceImpl implements AuthService {
 
         User user = userRepository.findByEmail(request.getEmail().toLowerCase())
                 .orElseThrow(() -> new AuthException("User not found", HttpStatus.NOT_FOUND));
-
-        String status = userServiceClient.getUserStatus(user.getId());
-
-        if ("BLOCKED".equalsIgnoreCase(status)) {
+        if (!user.isActive()) {
             throw new UserBlockedException();
         }
 
@@ -121,8 +118,7 @@ public class AuthServiceImpl implements AuthService {
                 )
         );
 
-        String status = userServiceClient.getUserStatus(user.getId());
-        if ("BLOCKED".equalsIgnoreCase(status)) {
+        if (!user.isActive()) {
             throw new UserBlockedException();
         }
 
@@ -137,6 +133,10 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new AuthException(
                         "No account found with this email", HttpStatus.NOT_FOUND));
+
+        if (!user.isActive()) {
+            throw new UserBlockedException();
+        }
 
         String otp = otpService.generateAndSaveOtpForEmail(email, OtpStore.OtpType.LOGIN);
 
@@ -158,11 +158,6 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new AuthException("User not found", HttpStatus.NOT_FOUND));
 
-        String status = userServiceClient.getUserStatus(user.getId());
-        if ("BLOCKED".equalsIgnoreCase(status)) {
-            throw new UserBlockedException();
-        }
-
         return buildAuthResponse(user);
     }
 
@@ -172,6 +167,10 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(request.getEmail().toLowerCase())
                 .orElseThrow(() -> new AuthException(
                         "No account found with this email", HttpStatus.NOT_FOUND));
+
+        if (!user.isActive()) {
+            throw new UserBlockedException();
+        }
 
         String otp = otpService.generateAndSaveOtpForEmail(request.getEmail(), OtpStore.OtpType.PASSWORD_RESET);
 
@@ -239,10 +238,28 @@ public class AuthServiceImpl implements AuthService {
         RefreshToken refreshToken = refreshTokenService.validateRefreshToken(request.getRefreshToken());
         User user = refreshToken.getUser();
 
+        if (!user.isActive()) {
+            throw new UserBlockedException();
+        }
+
         // Rotate refresh token (revoke old, issue new)
         refreshTokenService.revokeRefreshToken(request.getRefreshToken());
 
         return buildAuthResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public void updateStatus(Long userId, String status) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AuthException("User not found", HttpStatus.NOT_FOUND));
+
+        user.setActive("ACTIVE".equalsIgnoreCase(status));
+
+        userRepository.save(user);
+
+        log.info("User status updated from user-service: userId={}, status={}", userId, status);
     }
 
 

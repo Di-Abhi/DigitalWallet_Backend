@@ -50,23 +50,13 @@ public class WalletController {
         return ResponseEntity.ok(ApiResponse.ok("Balance fetched", walletQueryService.getBalance(userId)));
     }
 
-    // // ── Topup ─────────────────────────────────────────────────────────────────
-    // @PostMapping("/internal/topup")
-    // @Operation(summary = "Top up wallet")
-    // public ResponseEntity<ApiResponse<Void>> topup(
-    // @RequestHeader("X-User-Id") Long userId,
-    // @Valid @RequestBody TopupRequest req) {
-    // walletService.topup(userId, req.getAmount(), req.getIdempotencyKey());
-    // return ResponseEntity.ok(ApiResponse.ok("Top-up successful"));
-    // }
-
     // ── Transfer ──────────────────────────────────────────────────────────────
     @PostMapping("/transfer")
     @Operation(summary = "Transfer to another user")
     public ResponseEntity<ApiResponse<Void>> transfer(
             @RequestHeader("X-User-Id") Long senderId,
             @Valid @RequestBody TransferRequest req) {
-        walletCommandService.transfer(senderId, req.getReceiverId(), req.getAmount(),
+        walletCommandService.transfer(senderId, req.getReceiverPhone(), req.getAmount(),
                 req.getIdempotencyKey(), req.getDescription());
         return ResponseEntity.ok(ApiResponse.ok("Transfer successful"));
     }

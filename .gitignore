@@ -7,3 +7,5 @@
 /user-service/target/
 /wallet-service/target/
 .env
+deploy/.env
+deploy/.env.production

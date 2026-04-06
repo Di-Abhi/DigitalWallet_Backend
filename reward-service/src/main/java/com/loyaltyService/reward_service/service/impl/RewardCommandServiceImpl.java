@@ -133,8 +133,7 @@ public class RewardCommandServiceImpl implements RewardCommandService {
         if (acc.getPoints() < points)
             throw new RewardException("Insufficient points. Available: " + acc.getPoints());
 
-        BigDecimal cashAmount = BigDecimal.valueOf(points)
-                .divide(BigDecimal.valueOf(100));
+        BigDecimal cashAmount = BigDecimal.valueOf(points);
         acc.setPoints(acc.getPoints() - points);
         updateTier(acc);
         rewardRepo.save(acc);

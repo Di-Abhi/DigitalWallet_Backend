@@ -56,21 +56,6 @@ public class KycServiceImpl implements KycService {
             if (kycRepo.existsByUserIdAndStatus(userId, KycDetail.KycStatus.APPROVED))
                 throw new DuplicateKycException("KYC already approved for this user");
 
-//            String filePath = null;
-//            if (docFile != null && !docFile.isEmpty()) {
-//                try {
-//                    Path dir = Paths.get(uploadDir, userId.toString());
-//                    Files.createDirectories(dir);
-//                    String fname = docType.name() + "_" + System.currentTimeMillis()
-//                            + "_" + docFile.getOriginalFilename();
-//                    filePath = dir.resolve(fname).toString();
-//                    Files.copy(docFile.getInputStream(), Paths.get(filePath),
-//                            StandardCopyOption.REPLACE_EXISTING);
-//                } catch (IOException e) {
-//                    throw new RuntimeException("Failed to store KYC document", e);
-//                }
-//            }
-
             String filePath = null;
 
             if (docFile != null && !docFile.isEmpty()) {

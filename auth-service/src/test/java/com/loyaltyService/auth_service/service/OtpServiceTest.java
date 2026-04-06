@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.serializer.SerializationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,7 +75,7 @@ class OtpServiceTest {
     @Test
     void verifyEmailOtpDeletesKeysOnSuccess() {
         when(valueOperations.get("otp:LOGIN:user@example.com")).thenReturn("123456");
-        when(valueOperations.get("otp:attempts:LOGIN:user@example.com")).thenReturn(2);
+        when(valueOperations.get("otp:attempts:LOGIN:user@example.com")).thenReturn("2");
 
         otpService.verifyEmailOtp("user@example.com", "123456", OtpStore.OtpType.LOGIN);
 
@@ -94,7 +96,7 @@ class OtpServiceTest {
     @Test
     void verifyEmailOtpThrowsWhenAttemptsExceeded() {
         when(valueOperations.get("otp:LOGIN:user@example.com")).thenReturn("123456");
-        when(valueOperations.get("otp:attempts:LOGIN:user@example.com")).thenReturn(5);
+        when(valueOperations.get("otp:attempts:LOGIN:user@example.com")).thenReturn("5");
 
         AuthException exception = assertThrows(AuthException.class,
                 () -> otpService.verifyEmailOtp("user@example.com", "123456", OtpStore.OtpType.LOGIN));
@@ -114,6 +116,30 @@ class OtpServiceTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
         verify(redisTemplate).expire("otp:attempts:LOGIN:user@example.com", 5, TimeUnit.MINUTES);
+    }
+
+    @Test
+    void verifyEmailOtpTreatsUnreadableOtpAsMissing() {
+        when(valueOperations.get("otp:LOGIN:user@example.com"))
+                .thenThrow(new SerializationException("broken"));
+
+        AuthException exception = assertThrows(AuthException.class,
+                () -> otpService.verifyEmailOtp("user@example.com", "123456", OtpStore.OtpType.LOGIN));
+
+        assertEquals(HttpStatus.GONE, exception.getStatus());
+        verify(redisTemplate).delete("otp:LOGIN:user@example.com");
+    }
+
+    @Test
+    void verifyEmailOtpTreatsUnreadableAttemptsAsZero() {
+        when(valueOperations.get("otp:LOGIN:user@example.com")).thenReturn("123456");
+        when(valueOperations.get("otp:attempts:LOGIN:user@example.com"))
+                .thenThrow(new SerializationException("broken"));
+
+        otpService.verifyEmailOtp("user@example.com", "123456", OtpStore.OtpType.LOGIN);
+
+        verify(redisTemplate, times(2)).delete("otp:attempts:LOGIN:user@example.com");
+        verify(redisTemplate).delete("otp:LOGIN:user@example.com");
     }
 
     @Test

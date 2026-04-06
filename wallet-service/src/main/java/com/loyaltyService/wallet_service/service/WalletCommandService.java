@@ -13,7 +13,7 @@ public interface WalletCommandService {
 
     void topup(Long userId, BigDecimal amount, String idempotencyKey);
 
-    void transfer(Long senderId, Long receiverId, BigDecimal amount,
+    void transfer(Long senderId, String receiverPhone, BigDecimal amount,
             String idempotencyKey, String description);
 
     void withdraw(Long userId, BigDecimal amount);

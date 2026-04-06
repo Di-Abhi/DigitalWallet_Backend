@@ -2,6 +2,7 @@ package com.loyaltyService.wallet_service.controller;
 
 import com.loyaltyService.wallet_service.entity.Payment;
 import com.loyaltyService.wallet_service.repository.PaymentRepository;
+import com.loyaltyService.wallet_service.service.KafkaProducerService;
 import com.loyaltyService.wallet_service.service.WalletCommandService;
 import com.loyaltyService.wallet_service.service.WalletQueryService;
 import com.loyaltyService.wallet_service.service.RazorpayService;
@@ -24,7 +25,7 @@ public class PaymentController {
         private final RazorpayService razorpayService;
         private final WalletCommandService walletCommandService;
         private final WalletQueryService walletQueryService;
-        private final com.loyaltyService.wallet_service.service.KafkaProducerService kafkaProducer;
+        private final KafkaProducerService kafkaProducer;
 
         @Value("${razorpay.secret}")
         private String secret;
@@ -61,7 +62,7 @@ public class PaymentController {
                 Payment payment = paymentRepo.findById(orderId)
                                 .orElseThrow(() -> new RuntimeException("Order not found"));
 
-                BigDecimal amount = payment.getAmount(); // ✅ real amount
+                BigDecimal amount = payment.getAmount();
 
                 walletCommandService.topup(userId, amount, orderId);
                 payment.setStatus("SUCCESS");

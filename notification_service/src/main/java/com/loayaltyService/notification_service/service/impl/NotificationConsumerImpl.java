@@ -246,12 +246,15 @@ public class NotificationConsumerImpl implements NotificationConsumer {
                     String senderEmail   = userClient.getProfile(senderId).getEmail();
                     String receiverEmail = userClient.getProfile(receiverId).getEmail();
                     String amount    = String.valueOf(data.get("amount"));
-                    String balance   = String.valueOf(data.get("balance"));
+                    String senderBalance = String.valueOf(data.getOrDefault("senderBalance",
+                            data.getOrDefault("balance", "0")));
+                    String receiverBalance = String.valueOf(data.getOrDefault("receiverBalance",
+                            data.getOrDefault("balance", "0")));
                     String reference = String.valueOf(data.getOrDefault("reference", "N/A"));
                     emailService.sendHtml(senderEmail, "Transfer Successful",
-                            buildEmailHtml("Money Sent", "You have successfully sent money.", amount, balance, reference));
+                            buildEmailHtml("Money Sent", "You have successfully sent money.", amount, senderBalance, reference));
                     emailService.sendHtml(receiverEmail, "Money Received",
-                            buildEmailHtml("Money Received", "You have received money.", amount, balance, reference));
+                            buildEmailHtml("Money Received", "You have received money.", amount, receiverBalance, reference));
                     break;
                 }
 

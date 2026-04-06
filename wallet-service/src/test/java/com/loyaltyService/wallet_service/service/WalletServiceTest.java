@@ -1,6 +1,7 @@
 package com.loyaltyService.wallet_service.service;
 
 import com.loyaltyService.wallet_service.client.RewardClient;
+import com.loyaltyService.wallet_service.client.UserClient;
 import com.loyaltyService.wallet_service.dto.WalletBalanceResponse;
 import com.loyaltyService.wallet_service.entity.LedgerEntry;
 import com.loyaltyService.wallet_service.entity.Transaction;
@@ -17,6 +18,8 @@ import com.loyaltyService.wallet_service.service.impl.WalletQueryServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -47,7 +50,10 @@ class WalletServiceTest {
     @Mock private TransactionRepository txnRepo;
     @Mock private LedgerService ledgerService;
     @Mock private RewardClient rewardClient;
+    @Mock private UserClient userClient;
     @Mock private KafkaProducerService kafkaProducer;
+    @Mock private CacheManager cacheManager;
+    @Mock private Cache walletBalanceCache;
     @Mock private WalletMapper walletMapper;
 
     @InjectMocks
@@ -61,6 +67,7 @@ class WalletServiceTest {
         ReflectionTestUtils.setField(walletCommandService, "dailyTopupLimit", new BigDecimal("50000"));
         ReflectionTestUtils.setField(walletCommandService, "dailyTransferLimit", new BigDecimal("25000"));
         ReflectionTestUtils.setField(walletCommandService, "maxDailyTransfers", 10);
+        when(cacheManager.getCache("wallet-balance")).thenReturn(walletBalanceCache);
     }
 
     @Test
@@ -139,8 +146,10 @@ class WalletServiceTest {
 
     @Test
     void transferThrowsWhenSenderEqualsReceiver() {
+        when(userClient.getUserByPhone("9999999999"))
+                .thenReturn(new UserClient.UserProfileResponse(1L, "Self", "self@test.com", "9999999999", "ACTIVE", "NOT_SUBMITTED"));
         WalletException exception = assertThrows(WalletException.class,
-                () -> walletCommandService.transfer(1L, 1L, new BigDecimal("10"), null, "desc"));
+                () -> walletCommandService.transfer(1L, "9999999999", new BigDecimal("10"), null, "desc"));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
     }
@@ -148,8 +157,10 @@ class WalletServiceTest {
     @Test
     void transferIgnoresDuplicateIdempotencyKey() {
         when(txnRepo.findByIdempotencyKey("idem")).thenReturn(Optional.of(Transaction.builder().id(1L).build()));
+        when(userClient.getUserByPhone("8888888888"))
+                .thenReturn(new UserClient.UserProfileResponse(2L, "Receiver", "r@test.com", "8888888888", "ACTIVE", "NOT_SUBMITTED"));
 
-        walletCommandService.transfer(1L, 2L, new BigDecimal("10"), "idem", "desc");
+        walletCommandService.transfer(1L, "8888888888", new BigDecimal("10"), "idem", "desc");
 
         verify(accountRepo, never()).save(any(WalletAccount.class));
     }
@@ -159,11 +170,13 @@ class WalletServiceTest {
         WalletAccount sender = activeWallet(1L, "10.00");
         WalletAccount receiver = activeWallet(2L, "0.00");
         when(txnRepo.findByIdempotencyKey("idem")).thenReturn(Optional.empty());
+        when(userClient.getUserByPhone("8888888888"))
+                .thenReturn(new UserClient.UserProfileResponse(2L, "Receiver", "r@test.com", "8888888888", "ACTIVE", "NOT_SUBMITTED"));
         when(accountRepo.findByUserId(1L)).thenReturn(Optional.of(sender));
         when(accountRepo.findByUserId(2L)).thenReturn(Optional.of(receiver));
 
         WalletException exception = assertThrows(WalletException.class,
-                () -> walletCommandService.transfer(1L, 2L, new BigDecimal("20"), "idem", "desc"));
+                () -> walletCommandService.transfer(1L, "8888888888", new BigDecimal("20"), "idem", "desc"));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
     }
@@ -173,13 +186,15 @@ class WalletServiceTest {
         WalletAccount sender = activeWallet(1L, "1000.00");
         WalletAccount receiver = activeWallet(2L, "0.00");
         when(txnRepo.findByIdempotencyKey("idem")).thenReturn(Optional.empty());
+        when(userClient.getUserByPhone("8888888888"))
+                .thenReturn(new UserClient.UserProfileResponse(2L, "Receiver", "r@test.com", "8888888888", "ACTIVE", "NOT_SUBMITTED"));
         when(accountRepo.findByUserId(1L)).thenReturn(Optional.of(sender));
         when(accountRepo.findByUserId(2L)).thenReturn(Optional.of(receiver));
         when(txnRepo.sumTodayTransfers(eq(1L), eq(Transaction.TxnType.TRANSFER), eq(Transaction.TxnStatus.SUCCESS), any(), any()))
                 .thenReturn(new BigDecimal("24990"));
 
         WalletException exception = assertThrows(WalletException.class,
-                () -> walletCommandService.transfer(1L, 2L, new BigDecimal("20"), "idem", "desc"));
+                () -> walletCommandService.transfer(1L, "8888888888", new BigDecimal("20"), "idem", "desc"));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
     }
@@ -189,6 +204,8 @@ class WalletServiceTest {
         WalletAccount sender = activeWallet(1L, "1000.00");
         WalletAccount receiver = activeWallet(2L, "0.00");
         when(txnRepo.findByIdempotencyKey("idem")).thenReturn(Optional.empty());
+        when(userClient.getUserByPhone("8888888888"))
+                .thenReturn(new UserClient.UserProfileResponse(2L, "Receiver", "r@test.com", "8888888888", "ACTIVE", "NOT_SUBMITTED"));
         when(accountRepo.findByUserId(1L)).thenReturn(Optional.of(sender));
         when(accountRepo.findByUserId(2L)).thenReturn(Optional.of(receiver));
         when(txnRepo.sumTodayTransfers(eq(1L), eq(Transaction.TxnType.TRANSFER), eq(Transaction.TxnStatus.SUCCESS), any(), any()))
@@ -197,7 +214,7 @@ class WalletServiceTest {
                 .thenReturn(10L);
 
         WalletException exception = assertThrows(WalletException.class,
-                () -> walletCommandService.transfer(1L, 2L, new BigDecimal("20"), "idem", "desc"));
+                () -> walletCommandService.transfer(1L, "8888888888", new BigDecimal("20"), "idem", "desc"));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
     }
@@ -207,6 +224,8 @@ class WalletServiceTest {
         WalletAccount sender = activeWallet(1L, "100.00");
         WalletAccount receiver = activeWallet(2L, "40.00");
         when(txnRepo.findByIdempotencyKey("idem")).thenReturn(Optional.empty());
+        when(userClient.getUserByPhone("8888888888"))
+                .thenReturn(new UserClient.UserProfileResponse(2L, "Receiver", "r@test.com", "8888888888", "ACTIVE", "NOT_SUBMITTED"));
         when(accountRepo.findByUserId(1L)).thenReturn(Optional.of(sender));
         when(accountRepo.findByUserId(2L)).thenReturn(Optional.of(receiver));
         when(txnRepo.sumTodayTransfers(eq(1L), eq(Transaction.TxnType.TRANSFER), eq(Transaction.TxnStatus.SUCCESS), any(), any()))
@@ -214,14 +233,17 @@ class WalletServiceTest {
         when(txnRepo.countTodayTransfers(eq(1L), eq(Transaction.TxnType.TRANSFER), eq(Transaction.TxnStatus.SUCCESS), any(), any()))
                 .thenReturn(0L);
 
-        walletCommandService.transfer(1L, 2L, new BigDecimal("25.00"), "idem", "gift");
+        walletCommandService.transfer(1L, "8888888888", new BigDecimal("25.00"), "idem", "gift");
 
         assertEquals(new BigDecimal("75.00"), sender.getBalance());
         assertEquals(new BigDecimal("65.00"), receiver.getBalance());
         verify(ledgerService).record(eq(1L), eq(new BigDecimal("25.00")), eq(LedgerEntry.EntryType.DEBIT), org.mockito.ArgumentMatchers.startsWith("TXN_"), eq("gift"));
         verify(ledgerService).record(eq(2L), eq(new BigDecimal("25.00")), eq(LedgerEntry.EntryType.CREDIT), org.mockito.ArgumentMatchers.startsWith("TXN_"), eq("gift"));
         verify(rewardClient).earnPoints(1L, new BigDecimal("25.00"));
-        verify(kafkaProducer).send(eq("wallet-events"), any(Map.class));
+        ArgumentCaptor<Map<String, Object>> eventCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(kafkaProducer).send(eq("wallet-events"), eventCaptor.capture());
+        assertEquals(new BigDecimal("75.00"), eventCaptor.getValue().get("senderBalance"));
+        assertEquals(new BigDecimal("65.00"), eventCaptor.getValue().get("receiverBalance"));
     }
 
     @Test

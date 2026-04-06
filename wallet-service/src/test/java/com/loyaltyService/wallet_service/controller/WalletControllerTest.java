@@ -13,8 +13,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.support.StaticApplicationContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import java.math.BigDecimal;
 
@@ -45,7 +47,12 @@ class WalletControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(walletController).build();
+        LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
+        validator.setApplicationContext(new StaticApplicationContext());
+        validator.afterPropertiesSet();
+        mockMvc = MockMvcBuilders.standaloneSetup(walletController)
+                .setValidator(validator)
+                .build();
     }
 
     @Test
@@ -67,7 +74,7 @@ class WalletControllerTest {
     @Test
     void testTransfer() throws Exception {
         TransferRequest req = new TransferRequest();
-        req.setReceiverId(200L);
+        req.setReceiverPhone("9876543210");
         req.setAmount(new BigDecimal("50.00"));
         req.setIdempotencyKey("TXN123");
         req.setDescription("Gift");
@@ -78,7 +85,22 @@ class WalletControllerTest {
                 .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk());
 
-        verify(walletCommandService, times(1)).transfer(100L, 200L, new BigDecimal("50.00"), "TXN123", "Gift");
+        verify(walletCommandService, times(1)).transfer(100L, "9876543210", new BigDecimal("50.00"), "TXN123", "Gift");
+    }
+
+    @Test
+    void testTransferRejectsInvalidPhone() throws Exception {
+        TransferRequest req = new TransferRequest();
+        req.setReceiverPhone("98ab54321");
+        req.setAmount(new BigDecimal("50.00"));
+
+        mockMvc.perform(post("/api/wallet/transfer")
+                .header("X-User-Id", "100")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+
+        verify(walletCommandService, never()).transfer(any(), any(), any(), any(), any());
     }
 
     @Test
