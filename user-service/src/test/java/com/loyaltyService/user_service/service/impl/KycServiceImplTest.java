@@ -11,6 +11,7 @@ import com.loyaltyService.user_service.mapper.KycMapper;
 import com.loyaltyService.user_service.repository.AuditLogRepository;
 import com.loyaltyService.user_service.repository.KycRepository;
 import com.loyaltyService.user_service.repository.UserRepository;
+import com.loyaltyService.user_service.service.CloudinaryService;
 import com.loyaltyService.user_service.service.KafkaProducerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,8 @@ class KycServiceImplTest {
     private KafkaProducerService kafkaProducer;
     @Mock
     private KycMapper kycMapper;
+    @Mock
+    private CloudinaryService cloudinaryService;
 
     @InjectMocks
     private KycServiceImpl kycService;
@@ -60,7 +63,9 @@ class KycServiceImplTest {
     void testSubmitKyc_Success() {
         when(userRepo.findById(1L)).thenReturn(Optional.of(testUser));
         when(kycRepo.existsByUserIdAndStatus(1L, KycDetail.KycStatus.APPROVED)).thenReturn(false);
+        when(kycRepo.findFirstByUserIdOrderBySubmittedAtDesc(1L)).thenReturn(Optional.empty());
         when(kycRepo.save(any(KycDetail.class))).thenReturn(testKyc);
+        when(cloudinaryService.uploadFile(any(), eq(1L), eq(KycDetail.DocType.PAN.name()))).thenReturn("cloudinary/path");
         
         KycStatusResponse resMock = new KycStatusResponse();
         resMock.setStatus("PENDING");
@@ -82,6 +87,40 @@ class KycServiceImplTest {
 
         assertThrows(DuplicateKycException.class, () -> 
             kycService.submitKyc(1L, KycDetail.DocType.PAN, "ID123", null));
+    }
+
+    @Test
+    void testSubmitKyc_AlreadyPending() {
+        when(userRepo.findById(1L)).thenReturn(Optional.of(testUser));
+        when(kycRepo.existsByUserIdAndStatus(1L, KycDetail.KycStatus.APPROVED)).thenReturn(false);
+        when(kycRepo.findFirstByUserIdOrderBySubmittedAtDesc(1L)).thenReturn(Optional.of(testKyc));
+
+        assertThrows(DuplicateKycException.class, () ->
+            kycService.submitKyc(1L, KycDetail.DocType.PAN, "ID123", null));
+    }
+
+    @Test
+    void testSubmitKyc_AfterRejected_AllowsResubmission() {
+        KycDetail rejectedKyc = KycDetail.builder()
+            .id(101L)
+            .user(testUser)
+            .status(KycDetail.KycStatus.REJECTED)
+            .build();
+
+        when(userRepo.findById(1L)).thenReturn(Optional.of(testUser));
+        when(kycRepo.existsByUserIdAndStatus(1L, KycDetail.KycStatus.APPROVED)).thenReturn(false);
+        when(kycRepo.findFirstByUserIdOrderBySubmittedAtDesc(1L)).thenReturn(Optional.of(rejectedKyc));
+        when(kycRepo.save(any(KycDetail.class))).thenReturn(testKyc);
+
+        KycStatusResponse resMock = new KycStatusResponse();
+        resMock.setStatus("PENDING");
+        when(kycMapper.toResponse(any())).thenReturn(resMock);
+
+        KycStatusResponse res = kycService.submitKyc(1L, KycDetail.DocType.PAN, "ID12345", null);
+
+        assertNotNull(res);
+        assertEquals("PENDING", res.getStatus());
+        verify(kycRepo).save(any(KycDetail.class));
     }
 
     @Test
