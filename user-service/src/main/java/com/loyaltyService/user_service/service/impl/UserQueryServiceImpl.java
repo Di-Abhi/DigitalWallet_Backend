@@ -47,6 +47,13 @@ public class UserQueryServiceImpl implements UserQueryService {
     }
 
     @Override
+    public UserProfileResponse getUserProfileByEmail(String email) {
+        User user = userRepo.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found for email: " + email));
+        return buildUserProfile(user.getId());
+    }
+
+    @Override
     public String getUserStatus(Long userId) {
         log.debug("Loading user status from DB for userId={}", userId);
         User user = findUser(userId);

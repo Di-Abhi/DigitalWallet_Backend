@@ -89,5 +89,14 @@ public class AuthController {
         return ResponseEntity.ok().build();
     }
 
+    @PutMapping("/internal/update-role")
+    public ResponseEntity<Void> updateRole(
+            @RequestBody UpdateRoleRequest req) {
+        authService.updateRole(req.userId(), req.role());
+        return ResponseEntity.ok().build();
+    }
+
     record UpdateProfileRequest(Long userId, String name, String phone) {}
+
+    record UpdateRoleRequest(Long userId, String role) {}
 }

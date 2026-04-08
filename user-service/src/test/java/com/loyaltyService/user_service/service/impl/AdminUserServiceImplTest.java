@@ -1,5 +1,6 @@
 package com.loyaltyService.user_service.service.impl;
 
+import com.loyaltyService.user_service.client.AuthServiceClient;
 import com.loyaltyService.user_service.dto.AdminDashboardResponse;
 import com.loyaltyService.user_service.dto.AdminUserResponse;
 import com.loyaltyService.user_service.entity.KycDetail;
@@ -44,6 +45,9 @@ class AdminUserServiceImplTest {
 
     @Mock
     private AdminUserMapper adminUserMapper;
+
+    @Mock
+    private AuthServiceClient authServiceClient;
 
     @InjectMocks
     private AdminUserServiceImpl adminUserService;
@@ -256,6 +260,7 @@ class AdminUserServiceImplTest {
 
         assertEquals("ADMIN", response.getRole());
         verify(userRepo).save(user);
+        verify(authServiceClient).updateRole(new AuthServiceClient.UpdateRoleRequest(5L, "ADMIN"));
     }
 
     @Test

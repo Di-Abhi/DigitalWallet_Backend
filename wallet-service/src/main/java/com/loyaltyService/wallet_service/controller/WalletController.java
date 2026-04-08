@@ -12,12 +12,14 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.PrintWriter;
@@ -33,6 +35,7 @@ import java.util.List;
 @RestController
 @RequestMapping("api/wallet")
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "Wallet", description = "Wallet balance, top-up, transfer, ledger")
 public class WalletController {
 
@@ -56,9 +59,17 @@ public class WalletController {
     public ResponseEntity<ApiResponse<Void>> transfer(
             @RequestHeader("X-User-Id") Long senderId,
             @Valid @RequestBody TransferRequest req) {
-        walletCommandService.transfer(senderId, req.getReceiverPhone(), req.getAmount(),
+        walletCommandService.transfer(senderId, req.getReceiverIdentifier(), req.getAmount(),
                 req.getIdempotencyKey(), req.getDescription());
         return ResponseEntity.ok(ApiResponse.ok("Transfer successful"));
+    }
+
+    @GetMapping("/transfer/receiver")
+    @Operation(summary = "Get receiver suggestion by phone, email, or user id")
+    public ResponseEntity<ApiResponse<ReceiverSuggestionResponse>> receiverSuggestion(
+            @RequestParam @NotBlank(message = "identifier is required") String identifier) {
+        ReceiverSuggestionResponse receiver = walletCommandService.resolveReceiver(identifier);
+        return ResponseEntity.ok(ApiResponse.ok("Receiver found", receiver));
     }
 
     // ── Withdraw ──────────────────────────────────────────────────────────────

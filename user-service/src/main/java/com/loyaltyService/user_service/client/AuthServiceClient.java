@@ -10,5 +10,10 @@ public interface AuthServiceClient {
     @PutMapping("/api/auth/internal/update-profile")
     void updateProfile(@RequestBody UpdateProfileRequest request);
 
+    @PutMapping("/api/auth/internal/update-role")
+    void updateRole(@RequestBody UpdateRoleRequest request);
+
     record UpdateProfileRequest(Long userId, String name, String phone) {}
+
+    record UpdateRoleRequest(Long userId, String role) {}
 }

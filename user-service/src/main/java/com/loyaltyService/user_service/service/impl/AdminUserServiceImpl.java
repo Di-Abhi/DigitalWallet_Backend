@@ -1,5 +1,6 @@
 package com.loyaltyService.user_service.service.impl;
 
+import com.loyaltyService.user_service.client.AuthServiceClient;
 import com.loyaltyService.user_service.dto.AdminDashboardResponse;
 import com.loyaltyService.user_service.dto.AdminUserResponse;
 import com.loyaltyService.user_service.entity.KycDetail;
@@ -30,7 +31,8 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     private final UserRepository userRepo;
     private final KycRepository kycRepo;
-    private final AdminUserMapper adminUserMapper; 
+    private final AdminUserMapper adminUserMapper;
+    private final AuthServiceClient authServiceClient;
 
     @Override
     public AdminDashboardResponse getDashboard() {
@@ -147,6 +149,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         User user = findOrThrow(userId);
         user.setRole(newRole);
         userRepo.save(user);
+        authServiceClient.updateRole(new AuthServiceClient.UpdateRoleRequest(userId, newRole.name()));
         return adminUserMapper.toDto(user);
     }
 

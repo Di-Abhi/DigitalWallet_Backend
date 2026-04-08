@@ -149,6 +149,30 @@ class AuthServiceTest {
     }
 
     @Test
+    void updateRoleUpdatesRoleAndRevokesAllTokens() {
+        User user = user(1L, "test@example.com", "9999999999");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        authService.updateRole(1L, "ADMIN");
+
+        assertEquals(User.Role.ADMIN, user.getRole());
+        verify(userRepository).save(user);
+        verify(refreshTokenService).revokeAllUserTokens(user);
+    }
+
+    @Test
+    void updateRoleThrowsWhenRoleInvalid() {
+        User user = user(1L, "test@example.com", "9999999999");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        AuthException exception = assertThrows(AuthException.class,
+                () -> authService.updateRole(1L, "NOT_A_ROLE"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
+        verify(refreshTokenService, never()).revokeAllUserTokens(any());
+    }
+
+    @Test
     void loginWithEmailPasswordAuthenticatesAndReturnsTokens() {
         AuthDto.LoginRequest request = AuthDto.LoginRequest.builder()
                 .email("TEST@EXAMPLE.COM")

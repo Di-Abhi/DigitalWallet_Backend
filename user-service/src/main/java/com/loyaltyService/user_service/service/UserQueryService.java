@@ -14,5 +14,7 @@ public interface UserQueryService {
 
     UserProfileResponse getUserProfileByPhone(String phone);
 
+    UserProfileResponse getUserProfileByEmail(String email);
+
     String getUserStatus(Long userId);
 }

@@ -14,12 +14,12 @@ public interface KycService {
 
     // Admin-facing — by KYC record id
     Page<KycStatusResponse> getPendingKyc(Pageable pageable);
-    KycStatusResponse approve(Long kycId, String adminEmail);
-    KycStatusResponse reject(Long kycId, String reason, String adminEmail);
+    KycStatusResponse approve(Long kycId, Long adminUserId, String adminEmail);
+    KycStatusResponse reject(Long kycId, Long adminUserId, String reason, String adminEmail);
 
     // Admin-facing — by USER id (approve the latest pending KYC for a user)
-    KycStatusResponse approveByUserId(Long userId, String adminEmail);
-    KycStatusResponse rejectByUserId(Long userId, String reason, String adminEmail);
+    KycStatusResponse approveByUserId(Long userId, Long adminUserId, String adminEmail);
+    KycStatusResponse rejectByUserId(Long userId, Long adminUserId, String reason, String adminEmail);
 
     // Admin dashboard counts
     long countPending();

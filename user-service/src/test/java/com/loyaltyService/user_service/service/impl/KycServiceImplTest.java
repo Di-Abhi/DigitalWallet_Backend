@@ -5,6 +5,7 @@ import com.loyaltyService.user_service.dto.KycStatusResponse;
 import com.loyaltyService.user_service.entity.AuditLog;
 import com.loyaltyService.user_service.entity.KycDetail;
 import com.loyaltyService.user_service.entity.User;
+import com.loyaltyService.user_service.exception.BadRequestException;
 import com.loyaltyService.user_service.exception.DuplicateKycException;
 import com.loyaltyService.user_service.exception.ResourceNotFoundException;
 import com.loyaltyService.user_service.mapper.KycMapper;
@@ -139,5 +140,25 @@ class KycServiceImplTest {
     void testGetStatus_NotFound() {
         when(kycRepo.findFirstByUserIdOrderBySubmittedAtDesc(1L)).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> kycService.getStatus(1L));
+    }
+
+    @Test
+    void testApproveByUserId_FailsWhenAdminTargetsSelf() {
+        assertThrows(BadRequestException.class, () ->
+                kycService.approveByUserId(1L, 1L, "admin@test.com"));
+    }
+
+    @Test
+    void testRejectByUserId_FailsWhenAdminTargetsSelf() {
+        assertThrows(BadRequestException.class, () ->
+                kycService.rejectByUserId(1L, 1L, "reason", "admin@test.com"));
+    }
+
+    @Test
+    void testApproveByKycId_FailsWhenAdminTargetsOwnKyc() {
+        when(kycRepo.findById(100L)).thenReturn(Optional.of(testKyc));
+
+        assertThrows(BadRequestException.class, () ->
+                kycService.approve(100L, 1L, "admin@test.com"));
     }
 }

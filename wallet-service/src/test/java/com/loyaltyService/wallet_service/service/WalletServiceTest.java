@@ -39,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -67,7 +68,7 @@ class WalletServiceTest {
         ReflectionTestUtils.setField(walletCommandService, "dailyTopupLimit", new BigDecimal("50000"));
         ReflectionTestUtils.setField(walletCommandService, "dailyTransferLimit", new BigDecimal("25000"));
         ReflectionTestUtils.setField(walletCommandService, "maxDailyTransfers", 10);
-        when(cacheManager.getCache("wallet-balance")).thenReturn(walletBalanceCache);
+        lenient().when(cacheManager.getCache("wallet-balance")).thenReturn(walletBalanceCache);
     }
 
     @Test
@@ -244,6 +245,26 @@ class WalletServiceTest {
         verify(kafkaProducer).send(eq("wallet-events"), eventCaptor.capture());
         assertEquals(new BigDecimal("75.00"), eventCaptor.getValue().get("senderBalance"));
         assertEquals(new BigDecimal("65.00"), eventCaptor.getValue().get("receiverBalance"));
+    }
+
+    @Test
+    void transferResolvesReceiverByEmail() {
+        WalletAccount sender = activeWallet(1L, "100.00");
+        WalletAccount receiver = activeWallet(2L, "40.00");
+        when(txnRepo.findByIdempotencyKey("idem")).thenReturn(Optional.empty());
+        when(userClient.getUserByEmail("receiver@test.com"))
+                .thenReturn(new UserClient.UserProfileResponse(2L, "Receiver", "receiver@test.com", "8888888888", "ACTIVE", "NOT_SUBMITTED"));
+        when(accountRepo.findByUserId(1L)).thenReturn(Optional.of(sender));
+        when(accountRepo.findByUserId(2L)).thenReturn(Optional.of(receiver));
+        when(txnRepo.sumTodayTransfers(eq(1L), eq(Transaction.TxnType.TRANSFER), eq(Transaction.TxnStatus.SUCCESS), any(), any()))
+                .thenReturn(BigDecimal.ZERO);
+        when(txnRepo.countTodayTransfers(eq(1L), eq(Transaction.TxnType.TRANSFER), eq(Transaction.TxnStatus.SUCCESS), any(), any()))
+                .thenReturn(0L);
+
+        walletCommandService.transfer(1L, "receiver@test.com", new BigDecimal("10.00"), "idem", "gift");
+
+        verify(userClient).getUserByEmail("receiver@test.com");
+        assertEquals(new BigDecimal("90.00"), sender.getBalance());
     }
 
     @Test

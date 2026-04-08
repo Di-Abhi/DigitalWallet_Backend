@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -65,6 +66,12 @@ public class UserController {
             @Pattern(regexp = "^\\d{10}$", message = "Phone number must be exactly 10 digits")
             String phone) {
         return userQueryService.getUserProfileByPhone(phone);
+    }
+
+    @GetMapping("/internal/email")
+    public UserProfileResponse getUserByEmailInternal(
+            @RequestParam @Email(message = "Invalid email format") String email) {
+        return userQueryService.getUserProfileByEmail(email);
     }
 
     record CreateUserRequest(Long id, String name, String email, String phone, User.Role role) {

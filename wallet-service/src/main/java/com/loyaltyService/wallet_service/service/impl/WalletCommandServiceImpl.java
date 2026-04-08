@@ -2,6 +2,7 @@ package com.loyaltyService.wallet_service.service.impl;
 
 import com.loyaltyService.wallet_service.client.RewardClient;
 import com.loyaltyService.wallet_service.client.UserClient;
+import com.loyaltyService.wallet_service.dto.ReceiverSuggestionResponse;
 import com.loyaltyService.wallet_service.entity.LedgerEntry;
 import com.loyaltyService.wallet_service.entity.Transaction;
 import com.loyaltyService.wallet_service.entity.WalletAccount;
@@ -29,6 +30,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * CQRS — Command implementation for Wallet.
@@ -39,6 +41,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class WalletCommandServiceImpl implements WalletCommandService {
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\d{10}$");
+    private static final Pattern NUMERIC_PATTERN = Pattern.compile("^\\d+$");
 
     private final WalletAccountRepository accountRepo;
     private final TransactionRepository txnRepo;
@@ -110,9 +114,9 @@ public class WalletCommandServiceImpl implements WalletCommandService {
     @Override
     @Transactional
     @CacheEvict(value = "wallet-balance", key = "#senderId")
-    public void transfer(Long senderId, String receiverPhone, BigDecimal amount,
+    public void transfer(Long senderId, String receiverIdentifier, BigDecimal amount,
             String idempotencyKey, String description) {
-        Long receiverId = resolveReceiverId(receiverPhone);
+        Long receiverId = resolveReceiverId(receiverIdentifier);
         if (senderId.equals(receiverId))
             throw new WalletException("Cannot transfer to yourself");
         if (idempotencyKey != null && txnRepo.findByIdempotencyKey(idempotencyKey).isPresent()) {
@@ -161,6 +165,17 @@ public class WalletCommandServiceImpl implements WalletCommandService {
         rewardClient.earnPoints(senderId, amount);
         evictReceiverBalance(receiverId);
         log.info("Transfer success: from={}, to={}, amount={}, ref={}", senderId, receiverId, amount, ref);
+    }
+
+    @Override
+    public ReceiverSuggestionResponse resolveReceiver(String receiverIdentifier) {
+        UserClient.UserProfileResponse user = resolveReceiverProfile(receiverIdentifier);
+        return ReceiverSuggestionResponse.builder()
+                .userId(user.id())
+                .name(user.name())
+                .email(user.email())
+                .phone(user.phone())
+                .build();
     }
 
     // ── Withdraw ──────────────────────────────────────────────────────────────
@@ -236,20 +251,45 @@ public class WalletCommandServiceImpl implements WalletCommandService {
         return acc;
     }
 
-    private Long resolveReceiverId(String receiverPhone) {
+    private Long resolveReceiverId(String receiverIdentifier) {
+        UserClient.UserProfileResponse user = resolveReceiverProfile(receiverIdentifier);
+        return user.id();
+    }
+
+    private UserClient.UserProfileResponse resolveReceiverProfile(String receiverIdentifier) {
+        String identifier = receiverIdentifier == null ? "" : receiverIdentifier.trim();
+        if (identifier.isEmpty()) {
+            throw new WalletException("Receiver identifier is required");
+        }
+
         try {
-            UserClient.UserProfileResponse user = userClient.getUserByPhone(receiverPhone);
+            UserClient.UserProfileResponse user = resolveUserByIdentifier(identifier);
             if (user == null || user.id() == null) {
-                throw new WalletException("User not found for phone: " + receiverPhone, HttpStatus.NOT_FOUND);
+                throw new WalletException("User not found for identifier: " + identifier, HttpStatus.NOT_FOUND);
             }
-            return user.id();
+            return user;
         } catch (FeignException.NotFound ex) {
-            throw new WalletException("User not found for phone: " + receiverPhone, HttpStatus.NOT_FOUND);
+            throw new WalletException("User not found for identifier: " + identifier, HttpStatus.NOT_FOUND);
+        } catch (FeignException.BadRequest ex) {
+            throw new WalletException("Invalid receiver identifier format", HttpStatus.BAD_REQUEST);
         } catch (WalletException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new WalletException("Unable to resolve recipient phone number", HttpStatus.BAD_GATEWAY);
+            throw new WalletException("Unable to resolve receiver details", HttpStatus.BAD_GATEWAY);
         }
+    }
+
+    private UserClient.UserProfileResponse resolveUserByIdentifier(String identifier) {
+        if (PHONE_PATTERN.matcher(identifier).matches()) {
+            return userClient.getUserByPhone(identifier);
+        }
+        if (identifier.contains("@")) {
+            return userClient.getUserByEmail(identifier);
+        }
+        if (NUMERIC_PATTERN.matcher(identifier).matches()) {
+            return userClient.getUserById(Long.parseLong(identifier));
+        }
+        throw new WalletException("Receiver identifier must be phone number, email, or user id", HttpStatus.BAD_REQUEST);
     }
 
     private void evictReceiverBalance(Long receiverId) {

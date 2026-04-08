@@ -6,6 +6,7 @@ import com.loyaltyService.user_service.entity.AuditLog;
 import com.loyaltyService.user_service.entity.KycDetail;
 import com.loyaltyService.user_service.entity.User;
 import com.loyaltyService.user_service.exception.DuplicateKycException;
+import com.loyaltyService.user_service.exception.BadRequestException;
 import com.loyaltyService.user_service.exception.ResourceNotFoundException;
 import com.loyaltyService.user_service.mapper.KycMapper;
 import com.loyaltyService.user_service.repository.AuditLogRepository;
@@ -109,39 +110,41 @@ public class KycServiceImpl implements KycService {
     // ── APPROVE by KYC id (admin) ─────────────────────────────────────────────
     @Override
     @Transactional
-    public KycStatusResponse approve(Long kycId, String adminEmail) {
+    public KycStatusResponse approve(Long kycId, Long adminUserId, String adminEmail) {
         KycDetail kyc = findKyc(kycId);
-        return doApprove(kyc, adminEmail);
+        return doApprove(kyc, adminUserId, adminEmail);
     }
 
     // ── APPROVE by USER id (admin) ────────────────────────────────────────────
     @Override
     @Transactional
-    public KycStatusResponse approveByUserId(Long userId, String adminEmail) {
+    public KycStatusResponse approveByUserId(Long userId, Long adminUserId, String adminEmail) {
+        validateAdminNotTargetingSelf(userId, adminUserId);
         KycDetail kyc = kycRepo
                 .findFirstByUserIdAndStatusOrderBySubmittedAtDesc(userId, KycDetail.KycStatus.PENDING)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No pending KYC found for userId: " + userId));
-        return doApprove(kyc, adminEmail);
+        return doApprove(kyc, adminUserId, adminEmail);
     }
 
     // ── REJECT by KYC id (admin) ──────────────────────────────────────────────
     @Override
     @Transactional
-    public KycStatusResponse reject(Long kycId, String reason, String adminEmail) {
+    public KycStatusResponse reject(Long kycId, Long adminUserId, String reason, String adminEmail) {
         KycDetail kyc = findKyc(kycId);
-        return doReject(kyc, reason, adminEmail);
+        return doReject(kyc, adminUserId, reason, adminEmail);
     }
 
     // ── REJECT by USER id (admin) ─────────────────────────────────────────────
     @Override
     @Transactional
-    public KycStatusResponse rejectByUserId(Long userId, String reason, String adminEmail) {
+    public KycStatusResponse rejectByUserId(Long userId, Long adminUserId, String reason, String adminEmail) {
+        validateAdminNotTargetingSelf(userId, adminUserId);
         KycDetail kyc = kycRepo
                 .findFirstByUserIdAndStatusOrderBySubmittedAtDesc(userId, KycDetail.KycStatus.PENDING)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No pending KYC found for userId: " + userId));
-        return doReject(kyc, reason, adminEmail);
+        return doReject(kyc, adminUserId, reason, adminEmail);
     }
 
     // ── DASHBOARD COUNTS ──────────────────────────────────────────────────────
@@ -168,7 +171,8 @@ public class KycServiceImpl implements KycService {
      * Core approve logic — shared by approve(kycId) and approveByUserId(userId).
      * Wallet and reward accounts are created HERE on approval, not on submission.
      */
-    private KycStatusResponse doApprove(KycDetail kyc, String adminEmail) {
+    private KycStatusResponse doApprove(KycDetail kyc, Long adminUserId, String adminEmail) {
+        validateAdminNotTargetingSelf(kyc.getUser().getId(), adminUserId);
 
         if (kyc.getStatus() == KycDetail.KycStatus.APPROVED)
             throw new DuplicateKycException("KYC already approved");
@@ -209,7 +213,8 @@ public class KycServiceImpl implements KycService {
         return kycMapper.toResponse(saved);
     }
 
-    private KycStatusResponse doReject(KycDetail kyc, String reason, String adminEmail) {
+    private KycStatusResponse doReject(KycDetail kyc, Long adminUserId, String reason, String adminEmail) {
+        validateAdminNotTargetingSelf(kyc.getUser().getId(), adminUserId);
         if (kyc.getStatus() != KycDetail.KycStatus.PENDING)
             throw new IllegalStateException("Only pending KYC can be rejected");
         kyc.setStatus(KycDetail.KycStatus.REJECTED);
@@ -244,6 +249,12 @@ public class KycServiceImpl implements KycService {
     private User findUser(Long userId) {
         return userRepo.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+    }
+
+    private void validateAdminNotTargetingSelf(Long targetUserId, Long adminUserId) {
+        if (adminUserId != null && adminUserId.equals(targetUserId)) {
+            throw new BadRequestException("Admins cannot approve or reject their own KYC");
+        }
     }
 
 }

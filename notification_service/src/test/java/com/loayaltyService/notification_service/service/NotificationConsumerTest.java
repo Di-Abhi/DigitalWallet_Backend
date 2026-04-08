@@ -16,8 +16,8 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -46,7 +46,9 @@ class NotificationConsumerTest {
 
         notificationConsumer.kycEvents("event");
 
-        verify(emailService).sendHtml(eq("user@example.com"), eq("KYC Approved ✅"), anyString());
+        ArgumentCaptor<String> htmlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(emailService).sendHtml(eq("user@example.com"), eq("KYC Approved"), htmlCaptor.capture());
+        assertTrue(htmlCaptor.getValue().contains("Digital Wallet"));
     }
 
     @Test
@@ -68,8 +70,8 @@ class NotificationConsumerTest {
         ArgumentCaptor<String> htmlCaptor = ArgumentCaptor.forClass(String.class);
         verify(emailService).sendHtml(eq("sender@example.com"), eq("Transfer Successful"), htmlCaptor.capture());
         verify(emailService).sendHtml(eq("receiver@example.com"), eq("Money Received"), htmlCaptor.capture());
-        assertTrue(htmlCaptor.getAllValues().get(0).contains("₹900.00"));
-        assertTrue(htmlCaptor.getAllValues().get(1).contains("₹400.00"));
+        assertTrue(htmlCaptor.getAllValues().get(0).contains("&#8377;900.00"));
+        assertTrue(htmlCaptor.getAllValues().get(1).contains("&#8377;400.00"));
     }
 
     @Test
@@ -99,8 +101,8 @@ class NotificationConsumerTest {
         notificationConsumer.rewardEvents("event");
 
         ArgumentCaptor<String> htmlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(emailService).sendHtml(eq("reward@example.com"), eq("Reward Points Earned"), htmlCaptor.capture());
-        assertTrue(htmlCaptor.getValue().contains("₹0"));
+        verify(emailService).sendHtml(eq("reward@example.com"), eq("Reward Points Added"), htmlCaptor.capture());
+        assertTrue(htmlCaptor.getValue().contains("&#8377;0"));
         assertTrue(htmlCaptor.getValue().contains("N/A"));
     }
 

@@ -44,12 +44,13 @@ public class AdminKycController {
     public ResponseEntity<?> approveByKycId(
             @PathVariable Long kycId,
             @RequestHeader("X-User-Role")  String role,
+            @RequestHeader("X-User-Id")    Long adminUserId,
             @RequestHeader("X-User-Email") String adminEmail) {
 
         if (!isAdmin(role))
             return forbidden();
 
-        KycStatusResponse result = kycService.approve(kycId, adminEmail);
+        KycStatusResponse result = kycService.approve(kycId, adminUserId, adminEmail);
         return ResponseEntity.ok(ApiResponse.ok("KYC approved", result));
     }
 
@@ -59,12 +60,13 @@ public class AdminKycController {
     public ResponseEntity<?> approveByUserId(
             @PathVariable Long userId,
             @RequestHeader("X-User-Role")  String role,
+            @RequestHeader("X-User-Id")    Long adminUserId,
             @RequestHeader("X-User-Email") String adminEmail) {
 
         if (!isAdmin(role))
             return forbidden();
 
-        KycStatusResponse result = kycService.approveByUserId(userId, adminEmail);
+        KycStatusResponse result = kycService.approveByUserId(userId, adminUserId, adminEmail);
         return ResponseEntity.ok(ApiResponse.ok("KYC approved for userId: " + userId, result));
     }
 
@@ -75,12 +77,13 @@ public class AdminKycController {
             @PathVariable Long kycId,
             @RequestParam String reason,
             @RequestHeader("X-User-Role")  String role,
+            @RequestHeader("X-User-Id")    Long adminUserId,
             @RequestHeader("X-User-Email") String adminEmail) {
 
         if (!isAdmin(role))
             return forbidden();
 
-        KycStatusResponse result = kycService.reject(kycId, reason, adminEmail);
+        KycStatusResponse result = kycService.reject(kycId, adminUserId, reason, adminEmail);
         return ResponseEntity.ok(ApiResponse.ok("KYC rejected", result));
     }
 
@@ -91,12 +94,13 @@ public class AdminKycController {
             @PathVariable Long userId,
             @RequestParam String reason,
             @RequestHeader("X-User-Role")  String role,
+            @RequestHeader("X-User-Id")    Long adminUserId,
             @RequestHeader("X-User-Email") String adminEmail) {
 
         if (!isAdmin(role))
             return forbidden();
 
-        KycStatusResponse result = kycService.rejectByUserId(userId, reason, adminEmail);
+        KycStatusResponse result = kycService.rejectByUserId(userId, adminUserId, reason, adminEmail);
         return ResponseEntity.ok(ApiResponse.ok("KYC rejected for userId: " + userId, result));
     }
 

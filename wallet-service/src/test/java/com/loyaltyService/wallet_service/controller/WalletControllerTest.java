@@ -1,6 +1,7 @@
 package com.loyaltyService.wallet_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.loyaltyService.wallet_service.dto.ReceiverSuggestionResponse;
 import com.loyaltyService.wallet_service.dto.TransferRequest;
 import com.loyaltyService.wallet_service.dto.WalletBalanceResponse;
 import com.loyaltyService.wallet_service.dto.WithdrawRequest;
@@ -12,8 +13,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.support.StaticApplicationContext;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.support.StaticApplicationContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
@@ -74,7 +75,7 @@ class WalletControllerTest {
     @Test
     void testTransfer() throws Exception {
         TransferRequest req = new TransferRequest();
-        req.setReceiverPhone("9876543210");
+        req.setReceiverIdentifier("9876543210");
         req.setAmount(new BigDecimal("50.00"));
         req.setIdempotencyKey("TXN123");
         req.setDescription("Gift");
@@ -89,9 +90,9 @@ class WalletControllerTest {
     }
 
     @Test
-    void testTransferRejectsInvalidPhone() throws Exception {
+    void testTransferRejectsBlankIdentifier() throws Exception {
         TransferRequest req = new TransferRequest();
-        req.setReceiverPhone("98ab54321");
+        req.setReceiverIdentifier("  ");
         req.setAmount(new BigDecimal("50.00"));
 
         mockMvc.perform(post("/api/wallet/transfer")
@@ -101,6 +102,23 @@ class WalletControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(walletCommandService, never()).transfer(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void testReceiverSuggestion() throws Exception {
+        when(walletCommandService.resolveReceiver("receiver@test.com"))
+                .thenReturn(ReceiverSuggestionResponse.builder()
+                        .userId(200L)
+                        .name("Receiver User")
+                        .email("receiver@test.com")
+                        .phone("9998887776")
+                        .build());
+
+        mockMvc.perform(get("/api/wallet/transfer/receiver")
+                .param("identifier", "receiver@test.com"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value(200L))
+                .andExpect(jsonPath("$.data.name").value("Receiver User"));
     }
 
     @Test

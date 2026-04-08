@@ -5,6 +5,7 @@ import com.loyaltyService.auth_service.dto.AuthDto;
 public interface AuthService {
 	AuthDto.UserProfile signup(AuthDto.SignupRequest request);
 	void updateProfile(Long userId, String name, String phone);
+	void updateRole(Long userId, String role);
 	AuthDto.AuthResponse loginWithEmailPassword(AuthDto.LoginRequest request);
 	AuthDto.AuthResponse loginWithPhonePassword(AuthDto.PhoneLoginRequest request);
 	AuthDto.OtpSentResponse sendLoginOtp(AuthDto.SendOtpRequest request);

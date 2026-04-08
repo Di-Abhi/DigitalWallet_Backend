@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -80,6 +81,26 @@ public class AuthServiceImpl implements AuthService {
         if (phone != null && !phone.isBlank()) user.setPhone(phone);
         userRepository.save(user);
         log.info("Auth profile updated: userId={}", userId);
+    }
+
+    @Override
+    @Transactional
+    public void updateRole(Long userId, String role) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AuthException("User not found", HttpStatus.NOT_FOUND));
+
+        User.Role newRole;
+        try {
+            newRole = User.Role.valueOf(role.trim().toUpperCase(Locale.ROOT));
+        } catch (Exception exception) {
+            throw new AuthException("Invalid role: " + role, HttpStatus.BAD_REQUEST);
+        }
+
+        user.setRole(newRole);
+        userRepository.save(user);
+        refreshTokenService.revokeAllUserTokens(user);
+
+        log.info("Auth role updated: userId={}, role={}", userId, newRole);
     }
 
     record UpdateProfileRequest(Long userId, String name, String phone) {}
