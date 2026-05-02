@@ -32,7 +32,7 @@ class EmailServiceTest {
         ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(messageCaptor.capture());
         SimpleMailMessage message = messageCaptor.getValue();
-        assertEquals("shivamkumar1352002@gmail.com", message.getFrom());
+        assertEquals("cse.abhishek.kumar.rathour@gmail.com", message.getFrom());
         assertEquals("user@example.com", message.getTo()[0]);
         assertEquals("Your OTP Code", message.getSubject());
         assertEquals("Your OTP is: 123456", message.getText());

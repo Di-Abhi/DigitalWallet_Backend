@@ -68,7 +68,7 @@ class RewardCommandServiceImplTest {
         assertEquals(RewardAccount.Tier.GOLD, testAccount.getTier()); // Crosses 1000 threshold
         verify(txnRepo, atLeastOnce()).save(any());
         verify(rewardRepo, times(1)).save(testAccount);
-        verify(kafkaProducer, times(1)).send(eq("reward-events"), anyMap());
+        verify(kafkaProducer, times(1)).send(eq("reward-events"), anyString());
     }
 
     @Test
@@ -76,10 +76,10 @@ class RewardCommandServiceImplTest {
         when(rewardRepo.findByUserId(1L)).thenReturn(Optional.of(testAccount));
         when(txnRepo.sumRedeemedPointsToday(any(), any(), any(), any())).thenReturn(0);
 
-        commandService.redeemPoints(1L, 500); // 5 rupees
+        commandService.redeemPoints(1L, 500);
 
         assertEquals(500, testAccount.getPoints());
-        verify(walletClient, times(1)).credit(eq(1L), eq(new BigDecimal("5")));
+        verify(walletClient, times(1)).credit(eq(1L), eq(new BigDecimal("500")));
         verify(txnRepo, times(1)).save(any());
         verify(rewardRepo, times(1)).save(testAccount);
     }

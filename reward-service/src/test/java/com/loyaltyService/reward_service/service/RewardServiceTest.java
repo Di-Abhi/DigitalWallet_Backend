@@ -27,7 +27,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -76,7 +75,7 @@ class RewardServiceTest {
         rewardCommandService.earnPoints(1L, new BigDecimal("1000"));
 
         verify(txnRepo, times(2)).save(any(RewardTransaction.class));
-        verify(kafkaProducer).send(eq("reward-events"), any(Map.class));
+        verify(kafkaProducer).send(eq("reward-events"), any(String.class));
         verify(rewardRepo, times(2)).save(any(RewardAccount.class));
     }
 
@@ -183,12 +182,12 @@ class RewardServiceTest {
         RewardAccount account = RewardAccount.builder().userId(1L).points(500).tier(RewardAccount.Tier.SILVER).build();
         when(txnRepo.sumRedeemedPointsToday(eq(1L), eq(RewardTransaction.TxnType.REDEEM), any(), any())).thenReturn(0);
         when(rewardRepo.findByUserId(1L)).thenReturn(Optional.of(account));
-        when(walletClient.credit(1L, new BigDecimal("2"))).thenReturn(ResponseEntity.ok().build());
+        when(walletClient.credit(1L, new BigDecimal("200"))).thenReturn(ResponseEntity.ok().build());
 
         rewardCommandService.redeemPoints(1L, 200);
 
         assertEquals(300, account.getPoints());
-        verify(walletClient).credit(1L, new BigDecimal("2"));
+        verify(walletClient).credit(1L, new BigDecimal("200"));
         verify(txnRepo).save(any(RewardTransaction.class));
     }
 
@@ -197,11 +196,11 @@ class RewardServiceTest {
         RewardAccount account = RewardAccount.builder().userId(1L).points(500).tier(RewardAccount.Tier.SILVER).build();
         when(txnRepo.sumRedeemedPointsToday(eq(1L), eq(RewardTransaction.TxnType.REDEEM), any(), any())).thenReturn(0);
         when(rewardRepo.findByUserId(1L)).thenReturn(Optional.of(account));
-        when(walletClient.credit(1L, new BigDecimal("2"))).thenReturn(ResponseEntity.ok().build());
+        when(walletClient.credit(1L, new BigDecimal("200"))).thenReturn(ResponseEntity.ok().build());
 
         rewardCommandService.convertPointsToCash(1L, 200);
 
-        verify(walletClient).credit(1L, new BigDecimal("2"));
+        verify(walletClient).credit(1L, new BigDecimal("200"));
     }
 
     @Test

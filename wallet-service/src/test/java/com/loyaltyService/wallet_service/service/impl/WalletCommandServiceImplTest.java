@@ -62,7 +62,6 @@ class WalletCommandServiceImplTest {
         ReflectionTestUtils.setField(walletCommandService, "dailyTopupLimit", new BigDecimal("50000"));
         ReflectionTestUtils.setField(walletCommandService, "dailyTransferLimit", new BigDecimal("25000"));
         ReflectionTestUtils.setField(walletCommandService, "maxDailyTransfers", 10);
-        when(cacheManager.getCache("wallet-balance")).thenReturn(walletBalanceCache);
     }
 
     @Test
