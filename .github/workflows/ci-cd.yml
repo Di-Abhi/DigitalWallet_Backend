@@ -121,27 +121,41 @@ jobs:
 
     steps:
       - name: Validate required secrets
+        id: deploy_secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
         run: |
-          if [ -z "${{ secrets.SSH_HOST }}" ] || \
-             [ -z "${{ secrets.SSH_USERNAME }}" ] || \
-             [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] || \
-             [ -z "${{ secrets.DEPLOY_PATH }}" ] || \
-             [ -z "${{ secrets.PROD_ENV_FILE }}" ] || \
-             [ -z "${{ secrets.REGISTRY_USERNAME }}" ] || \
-             [ -z "${{ secrets.REGISTRY_PASSWORD }}" ]; then
-            echo "Missing required secrets"
-            exit 1
+          if [ -z "$SSH_HOST" ] || \
+             [ -z "$SSH_USERNAME" ] || \
+             [ -z "$SSH_PRIVATE_KEY" ] || \
+             [ -z "$DEPLOY_PATH" ] || \
+             [ -z "$PROD_ENV_FILE" ] || \
+             [ -z "$REGISTRY_USERNAME" ] || \
+             [ -z "$REGISTRY_PASSWORD" ]; then
+            echo "Missing deploy secrets; skipping server deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout code
+        if: steps.deploy_secrets.outputs.ready == 'true'
         uses: actions/checkout@v4
 
       - name: Compute lowercase owner
+        if: steps.deploy_secrets.outputs.ready == 'true'
         id: owner
         run: echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Copy deployment compose file
+        if: steps.deploy_secrets.outputs.ready == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -153,6 +167,7 @@ jobs:
           strip_components: 1
 
       - name: Deploy updated stack
+        if: steps.deploy_secrets.outputs.ready == 'true'
         uses: appleboy/ssh-action@v1.2.0
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
